@@ -1,48 +1,15 @@
-/* 1. Configuración básica de la página */
-* { box-sizing: border-box; }
+body { margin: 0; overflow: hidden; background-color: #000; }
+#scene { width: 100%; height: 100%; display: block; }
 
-body {
-  margin: 0;
-  overflow: hidden; /* Evita barras de desplazamiento */
-  background-color: #000; /* Fondo negro mientras carga */
-  font-family: sans-serif;
-}
-
-/* 2. El lienzo del juego (Canvas) */
-#scene {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/* 3. Personalización del botón "ENTER VR" 
-   (Three.js crea un botón con ID 'VRButton', aquí lo maquillamos) */
+/* Botón VR mejorado */
 button#VRButton {
-  /* Posición */
-  bottom: 30px !important; /* Un poco separado del borde inferior */
-  
-  /* Estilo Galáctico */
-  background: rgba(0, 0, 0, 0.85) !important; /* Fondo oscuro semi-transparente */
-  border: 2px solid #00ffcc !important;        /* Borde Cyan/Verde Neón */
-  color: #00ffcc !important;                   /* Texto Neón */
-  border-radius: 8px !important;               /* Bordes redondeados */
-  
-  /* Texto */
-  font-weight: bold !important;
-  text-transform: uppercase !important;
-  letter-spacing: 2px !important;
-  padding: 12px 24px !important;
-  
-  /* Efecto de Brillo (Glow) */
-  box-shadow: 0 0 15px rgba(0, 255, 204, 0.4) !important;
-  opacity: 1 !important;
-  transition: all 0.3s ease;
-}
-
-/* Efecto al pasar el mouse por encima */
-button#VRButton:hover {
-  background: #00ffcc !important;
-  color: #000 !important;
-  box-shadow: 0 0 25px rgba(0, 255, 204, 0.8) !important;
-  cursor: pointer;
+    bottom: 30px !important;
+    background: rgba(0, 20, 40, 0.9) !important;
+    border: 2px solid #00d2ff !important;
+    color: #00d2ff !important;
+    border-radius: 4px !important;
+    padding: 12px 30px !important;
+    font-family: "Courier New", monospace !important;
+    font-weight: bold !important;
+    box-shadow: 0 0 15px #00d2ff !important;
 }
