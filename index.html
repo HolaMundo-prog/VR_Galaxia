@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>GALACTIC DEFENDER VR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="style.css" />
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.1/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.1/examples/jsm/"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <div id="game-overlay">
+      <div class="content-box">
+        <h1 class="neon-title">GALACTIC DEFENDER</h1>
+        <p class="subtitle">Misión de Reconocimiento Lunar</p>
+        
+        <div class="instructions">
+          <h3>🎮 Instrucciones:</h3>
+          <ul>
+            <li>Usa tus gafas VR para mirar alrededor (Visión 360°).</li>
+            <li><strong>Mano Derecha (Giro):</strong> Inclina tu muñeca para pilotar la nave.</li>
+            <li><strong>Gatillo Derecho:</strong> Disparar láseres de plasma.</li>
+            <li>Evita los asteroides y estructuras alienígenas.</li>
+            <li>¡No salgas de la zona de vuelo permitida!</li>
+          </ul>
+        </div>
+
+        <div class="team-section">
+          <h3>🚀 Integrantes del Equipo:</h3>
+          <ul id="team-list">
+            <li>Budar Solano Angel Giovanni</li>
+            <li>24200293</li>
+          </ul>
+        </div>
+        
+        <p class="start-hint">Presiona el botón "ENTER VR" abajo para iniciar</p>
+      </div>
+    </div>
+
+    <audio id="bg-music" loop preload="auto" src="assets/audio/fondo.mp3"></audio>
+    
+    <canvas id="scene"></canvas>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

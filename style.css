@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: #000;
+  font-family: 'Roboto', sans-serif;
+}
+
+/* Fondo de la portada */
+#game-overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(circle at center, #1a2a6c, #b21f1f, #fdbb2d); /* Nebulosa abstracta */
+  background-size: 200% 200%;
+  animation: nebulaMove 15s ease infinite;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 5;
+  color: white;
+}
+
+@keyframes nebulaMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Caja de contenido (Glassmorphism) */
+.content-box {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(10px);
+  padding: 40px;
+  border-radius: 15px;
+  border: 2px solid #00d2ff;
+  text-align: center;
+  max-width: 600px;
+  box-shadow: 0 0 30px rgba(0, 210, 255, 0.6);
+}
+
+.neon-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 3.5rem;
+  margin: 0;
+  color: #fff;
+  text-shadow: 
+    0 0 5px #fff,
+    0 0 10px #fff,
+    0 0 20px #00d2ff,
+    0 0 40px #00d2ff;
+}
+
+.subtitle {
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 4px;
+  color: #ff00de;
+  margin-bottom: 30px;
+}
+
+.instructions, .team-section {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+h3 { margin-top: 0; color: #ffd700; }
+ul { margin: 0; padding-left: 20px; }
+li { margin-bottom: 5px; }
+
+/* El botón VR que Three.js genera */
+.vr-button {
+  bottom: 30px !important;
+  background: rgba(0,0,0,0.8) !important;
+  border: 2px solid #00ff00 !important;
+  color: #00ff00 !important;
+  font-family: 'Orbitron', sans-serif !important;
+  font-weight: bold;
+  padding: 15px 30px !important;
+}
