@@ -1,218 +1,363 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 
-/** ========= VARIABLES DE JUEGO ========= */
-let SCORE = 0;
-let HEALTH = 100;
-const SHIP_SPEED = 50;
-const LIMIT_X = 18;
-const LIMIT_Y = 12;
+/** ========= ESTADO DEL JUEGO ========= */
+const STATE = {
+    MENU: 0,
+    PLAYING: 1,
+    GAMEOVER: 2
+};
+let currentState = STATE.MENU;
 
-// Elementos HTML
-const bgMusic = document.getElementById('bg-music');
+let score = 0;
+let health = 100;
+const SHIP_SPEED = 60; // Velocidad simulada
+const LASER_SPEED = 150;
 
-/** ========= SETUP BÁSICO ========= */
+/** ========= ESCENA ========= */
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
-// Sombras suaves
-renderer.shadowMap.enabled = true; 
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(VRButton.createButton(renderer));
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x000000, 0.002); // Niebla negra profunda
+scene.fog = new THREE.FogExp2(0x050510, 0.0025); // Niebla púrpura oscura
 
-// Botón VR
-const vrBtn = VRButton.createButton(renderer);
-document.body.appendChild(vrBtn);
-vrBtn.addEventListener('click', () => {
-    if(bgMusic) { bgMusic.volume = 0.4; bgMusic.play().catch(()=>{}); }
-});
-
-/** ========= CÁMARA Y JUGADOR ========= */
+// Cámara y Contenedor del Jugador
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
 const shipGroup = new THREE.Group();
-shipGroup.position.set(0, 1.6, 5);
+shipGroup.position.set(0, 1.6, 0);
 shipGroup.add(camera);
 scene.add(shipGroup);
 
-// Audio Listener
+// Audio
 const listener = new THREE.AudioListener();
 camera.add(listener);
-
-/** ========= ENTORNO: ESTRELLAS Y GALAXIA ========= */
-// 1. HDRI (Fondo Galáctico)
-new RGBELoader().load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/starmap_g4k_1k.hdr', (texture) => {
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    scene.background = texture;
-    scene.environment = texture; // Iluminación basada en la galaxia
+const bgMusic = document.getElementById('bg-music');
+renderer.xr.addEventListener('sessionstart', () => {
+    if(bgMusic) { bgMusic.volume=0.3; bgMusic.play().catch(()=>{}); }
+    resetGame();
 });
 
-// 2. Partículas de Estrellas (Efecto Velocidad)
-const starCount = 2000;
-const starGeo = new THREE.BufferGeometry();
-const starPos = new Float32Array(starCount * 3);
-for(let i=0; i<starCount; i++){
-    starPos[i*3] = (Math.random() - 0.5) * 400;
-    starPos[i*3+1] = (Math.random() - 0.5) * 400;
-    starPos[i*3+2] = (Math.random() - 0.5) * 400;
+/** ========= ENTORNO ========= */
+// Estrellas (Fondo móvil)
+const starsGeo = new THREE.BufferGeometry();
+const starsCount = 3000;
+const starsPos = new Float32Array(starsCount * 3);
+for(let i=0; i<starsCount; i++) {
+    starsPos[i*3] = (Math.random()-0.5)*800;
+    starsPos[i*3+1] = (Math.random()-0.5)*800;
+    starsPos[i*3+2] = (Math.random()-0.5)*800;
 }
-starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, transparent: true, opacity: 0.8 });
-const starField = new THREE.Points(starGeo, starMat);
+starsGeo.setAttribute('position', new THREE.BufferAttribute(starsPos, 3));
+const starsMat = new THREE.PointsMaterial({color:0xffffff, size:0.7});
+const starField = new THREE.Points(starsGeo, starsMat);
 scene.add(starField);
 
-// 3. Suelo (Planeta abajo) - Opcional, para dar referencia
-const gridHelper = new THREE.GridHelper(500, 50, 0x00ffff, 0x222222);
-gridHelper.position.y = -20;
-scene.add(gridHelper);
+// Iluminación
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(-10, 50, 20);
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0x404060, 0.6));
 
-/** ========= LUCES ========= */
-const sunLight = new THREE.DirectionalLight(0xffffff, 2);
-sunLight.position.set(-20, 50, 20);
-sunLight.castShadow = true;
-scene.add(sunLight);
-scene.add(new THREE.AmbientLight(0x404060, 0.5)); // Luz ambiente azulada
-
-/** ========= CABINA AVANZADA + HUD ========= */
-// Texture Canvas para el HUD (Texto dinámico)
-const hudCanvas = document.createElement('canvas');
-hudCanvas.width = 512; hudCanvas.height = 256;
-const hudCtx = hudCanvas.getContext('2d');
-const hudTexture = new THREE.CanvasTexture(hudCanvas);
-
-function updateHUD() {
-    hudCtx.fillStyle = '#000000'; 
-    hudCtx.fillRect(0,0, 512, 256); // Limpiar fondo
-    
-    // Borde
-    hudCtx.strokeStyle = '#00ffcc';
-    hudCtx.lineWidth = 10;
-    hudCtx.strokeRect(5,5, 502, 246);
-
-    // Texto Score
-    hudCtx.font = 'bold 60px monospace';
-    hudCtx.fillStyle = '#00ffcc';
-    hudCtx.fillText(`SCORE: ${SCORE}`, 30, 80);
-
-    // Texto Salud (Cambia de color si es bajo)
-    hudCtx.fillStyle = HEALTH > 30 ? '#00ff00' : '#ff0000';
-    hudCtx.fillText(`HULL:  ${HEALTH}%`, 30, 160);
-    
-    // Barra de vida visual
-    hudCtx.fillStyle = '#333';
-    hudCtx.fillRect(30, 190, 450, 40);
-    hudCtx.fillStyle = HEALTH > 30 ? '#00ff00' : '#ff0000';
-    hudCtx.fillRect(30, 190, 4.5 * HEALTH, 40);
-
-    hudTexture.needsUpdate = true;
-}
-
-function buildCockpit() {
+/** ========= CABINA PRO (DISEÑO MEJORADO) ========= */
+function createCockpit() {
     const cockpit = new THREE.Group();
 
-    // 1. Estructura Principal (Gris Metálico)
-    const bodyGeo = new THREE.BoxGeometry(2.5, 1.2, 1.5);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.3, metalness: 0.8 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.set(0, -0.8, 0);
-    body.castShadow = true;
-    cockpit.add(body);
+    // 1. Base principal
+    const hullMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.8 });
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.2, 3.0), hullMat);
+    hull.position.set(0, -0.8, 0.5);
+    cockpit.add(hull);
 
-    // 2. Cristal Frontal (Transparente)
-    const glassGeo = new THREE.BoxGeometry(2.4, 1.0, 0.1);
-    const glassMat = new THREE.MeshPhysicalMaterial({ 
-        color: 0x88ccff, transmission: 0.9, opacity: 0.3, transparent: true, roughness: 0 
-    });
-    const glass = new THREE.Mesh(glassGeo, glassMat);
-    glass.position.set(0, 0.2, -0.75);
-    cockpit.add(glass);
+    // 2. Tablero de instrumentos (Inclinado)
+    const dashGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.5, 3); // Prisma triangular
+    const dash = new THREE.Mesh(dashGeo, hullMat);
+    dash.rotation.z = Math.PI / 2;
+    dash.rotation.y = Math.PI / 2;
+    dash.position.set(0, -0.4, -0.8);
+    cockpit.add(dash);
 
-    // 3. Pantalla HUD (Con la textura del canvas)
-    const screenGeo = new THREE.PlaneGeometry(1.2, 0.6);
-    const screenMat = new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true, opacity: 0.9 });
-    const screen = new THREE.Mesh(screenGeo, screenMat);
-    screen.position.set(0, -0.5, -0.74); // Pegado al tablero
-    screen.rotation.x = -Math.PI / 6; // Inclinado hacia el jugador
-    cockpit.add(screen);
+    // 3. Paneles brillantes (Monitores)
+    const screenMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+    const screenLeft = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), screenMat);
+    screenLeft.position.set(-0.6, -0.3, -0.85);
+    screenLeft.rotation.y = 0.5;
+    screenLeft.rotation.x = -0.5;
+    cockpit.add(screenLeft);
+
+    const screenRight = screenLeft.clone();
+    screenRight.position.set(0.6, -0.3, -0.85);
+    screenRight.rotation.y = -0.5;
+    cockpit.add(screenRight);
+
+    // 4. Marcos de la ventana (Struts)
+    const strutMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const leftStrut = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.5, 2), strutMat);
+    leftStrut.position.set(-1, 0.5, 0);
+    leftStrut.rotation.z = -0.2;
+    cockpit.add(leftStrut);
+
+    const rightStrut = leftStrut.clone();
+    rightStrut.position.set(1, 0.5, 0);
+    rightStrut.rotation.z = 0.2;
+    cockpit.add(rightStrut);
 
     return cockpit;
 }
-shipGroup.add(buildCockpit());
-updateHUD(); // Dibujar primera vez
+const myCockpit = createCockpit();
+shipGroup.add(myCockpit);
 
-/** ========= ASTEROIDES Y OBJETOS ========= */
-const asteroids = [];
-const asteroidGeo = new THREE.DodecahedronGeometry(1, 0); // Low poly rock
-const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x884444, flatShading: true, roughness: 0.8 });
+/** ========= UI 3D (TEXTOS FLOTANTES) ========= */
+// Cargamos una fuente para escribir en 3D
+const loader = new FontLoader();
+let fontLoaded = null;
+let scoreMesh = null;
+let healthMesh = null;
+let gameOverGroup = new THREE.Group();
+
+loader.load('https://unpkg.com/three@0.160.1/examples/fonts/helvetiker_bold.typeface.json', (font) => {
+    fontLoaded = font;
+    update3DText();
+    createGameOverScreen();
+});
+
+// Panel de Game Over
+function createGameOverScreen() {
+    if(!fontLoaded) return;
+    gameOverGroup.clear();
+
+    // Texto "GAME OVER"
+    const textGeo = new TextGeometry('MISION FALLIDA', { font: fontLoaded, size: 0.3, height: 0.05 });
+    textGeo.center();
+    const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    textMesh.position.y = 0.2;
+    
+    // Texto "Reiniciar"
+    const subGeo = new TextGeometry('Dispara para reiniciar', { font: fontLoaded, size: 0.12, height: 0.02 });
+    subGeo.center();
+    const subMesh = new THREE.Mesh(subGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    subMesh.position.y = -0.2;
+
+    gameOverGroup.add(textMesh, subMesh);
+    gameOverGroup.position.set(0, 1.6, -2); // Flotando frente a la cámara
+    gameOverGroup.visible = false;
+    scene.add(gameOverGroup);
+}
+
+// Actualizar marcadores de la nave
+function update3DText() {
+    if(!fontLoaded) return;
+    
+    // Borrar anteriores
+    if(scoreMesh) myCockpit.remove(scoreMesh);
+    if(healthMesh) myCockpit.remove(healthMesh);
+
+    // Score (Azul)
+    const scoreGeo = new TextGeometry(`Puntos: ${score}`, { font: fontLoaded, size: 0.08, height: 0.01 });
+    scoreMesh = new THREE.Mesh(scoreGeo, new THREE.MeshBasicMaterial({ color: 0x00aaff }));
+    scoreMesh.position.set(-0.8, -0.15, -0.9);
+    scoreMesh.rotation.y = 0.4;
+    myCockpit.add(scoreMesh);
+
+    // Salud (Verde/Rojo)
+    const col = health > 30 ? 0x00ff00 : 0xff0000;
+    const healthGeo = new TextGeometry(`Escudo: ${health}%`, { font: fontLoaded, size: 0.08, height: 0.01 });
+    healthMesh = new THREE.Mesh(healthGeo, new THREE.MeshBasicMaterial({ color: col }));
+    healthMesh.position.set(0.3, -0.15, -1.0);
+    healthMesh.rotation.y = -0.4;
+    myCockpit.add(healthMesh);
+}
+
+/** ========= OBJETOS DEL JUEGO ========= */
+let asteroids = [];
+let lasers = [];
+const particles = [];
+
+const asteroidGeo = new THREE.DodecahedronGeometry(1.5, 0); // Más grandes
+const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x884444, flatShading: true });
 
 function spawnAsteroid() {
-    const rock = new THREE.Mesh(asteroidGeo, asteroidMat.clone()); // Clone material to tint red on hit
+    if(currentState !== STATE.PLAYING) return;
+
+    const rock = new THREE.Mesh(asteroidGeo, asteroidMat.clone());
+    
+    // POSICIÓN: Aparecen lejos (-200) y dispersos
+    rock.position.set(
+        (Math.random() - 0.5) * 80,
+        (Math.random() - 0.5) * 40,
+        -250 
+    );
+    
     rock.userData = { 
-        rotSpeed: { x: Math.random()*0.05, y: Math.random()*0.05 },
-        hp: 1
+        rot: { x: Math.random()*0.05, y: Math.random()*0.05 },
+        speed: SHIP_SPEED + Math.random() * 20
     };
-    resetAsteroid(rock);
-    rock.castShadow = true;
+    
     scene.add(rock);
     asteroids.push(rock);
 }
 
-function resetAsteroid(obj) {
-    // Reaparecer lejos en frente
-    obj.position.set(
-        (Math.random() - 0.5) * 60,   // X disperso
-        (Math.random() - 0.5) * 30,   // Y disperso
-        -100 - Math.random() * 100    // Z lejos
-    );
-    const s = 1 + Math.random() * 3;
-    obj.scale.set(s,s,s);
-    obj.visible = true;
-    obj.material.color.setHex(0x884444); // Reset color
+function shootLaser(controller) {
+    if(currentState === STATE.GAMEOVER) {
+        resetGame(); // Disparar reinicia el juego
+        return;
+    }
+    if(currentState !== STATE.PLAYING) return;
+
+    const geo = new THREE.BoxGeometry(0.1, 0.1, 3);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // Verde brillante
+    const laser = new THREE.Mesh(geo, mat);
+
+    // Posición y rotación del control
+    const p = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    controller.getWorldPosition(p);
+    controller.getWorldQuaternion(q);
+
+    laser.position.copy(p);
+    laser.quaternion.copy(q);
+    laser.translateZ(-1.0); // Ajuste para que no salga de la mano
+
+    scene.add(laser);
+    lasers.push(laser);
+
+    playSound(800, 'square');
 }
-// Crear 20 asteroides iniciales
-for(let i=0; i<25; i++) spawnAsteroid();
 
-/** ========= EFECTOS: EXPLOSIONES ========= */
-const explosions = [];
-const particleGeo = new THREE.BufferGeometry();
-const particleCount = 30;
-const pPos = new Float32Array(particleCount * 3);
-particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-const particleMat = new THREE.PointsMaterial({ color: 0xffaa00, size: 0.5, transparent: true });
+function createExplosion(pos) {
+    // Partículas simples
+    const pCount = 15;
+    const geo = new THREE.BufferGeometry();
+    const posArr = new Float32Array(pCount*3);
+    const velArr = [];
 
-function spawnExplosion(position) {
-    const pts = new THREE.Points(particleGeo.clone(), particleMat.clone());
-    pts.position.copy(position);
-    
-    // Velocidades aleatorias para cada partícula
-    const velocities = [];
-    for(let i=0; i<particleCount; i++){
-        velocities.push({
-            x: (Math.random()-0.5) * 10,
-            y: (Math.random()-0.5) * 10,
-            z: (Math.random()-0.5) * 10
+    for(let i=0; i<pCount; i++) {
+        posArr[i*3] = pos.x;
+        posArr[i*3+1] = pos.y;
+        posArr[i*3+2] = pos.z;
+        velArr.push({
+            x: (Math.random()-0.5)*15,
+            y: (Math.random()-0.5)*15,
+            z: (Math.random()-0.5)*15
         });
     }
-    
-    // Necesitamos clonar las posiciones para animarlas independientemente
-    const positions = new Float32Array(particleCount * 3); // Todo en 0,0,0 relativo al centro
-    pts.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-    pts.userData = { life: 1.0, velocities: velocities };
-    scene.add(pts);
-    explosions.push(pts);
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    const mat = new THREE.PointsMaterial({color: 0xffaa00, size: 0.6, transparent: true});
+    const sys = new THREE.Points(geo, mat);
+    sys.userData = { life: 1.0, vels: velArr };
+    scene.add(sys);
+    particles.push(sys);
 }
 
-/** ========= CONTROLES Y DISPAROS ========= */
+function playSound(freq, type) {
+    if(listener.context.state === 'suspended') listener.context.resume();
+    const osc = listener.context.createOscillator();
+    const gain = listener.context.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, listener.context.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(100, listener.context.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.1, listener.context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, listener.context.currentTime + 0.1);
+    osc.connect(gain); gain.connect(listener.destination);
+    osc.start(); osc.stop(listener.context.currentTime + 0.15);
+}
+
+/** ========= LÓGICA DEL JUEGO ========= */
+function resetGame() {
+    // Limpiar escena
+    asteroids.forEach(a => { scene.remove(a); a.geometry.dispose(); });
+    lasers.forEach(l => { scene.remove(l); l.geometry.dispose(); });
+    asteroids = [];
+    lasers = [];
+    
+    score = 0;
+    health = 100;
+    currentState = STATE.PLAYING;
+    gameOverGroup.visible = false;
+    update3DText();
+    
+    // Iniciar oleada inicial
+    for(let i=0; i<5; i++) spawnAsteroid();
+}
+
+function gameOver() {
+    currentState = STATE.GAMEOVER;
+    gameOverGroup.visible = true;
+    playSound(150, 'sawtooth'); // Sonido grave
+}
+
+function checkCollisions() {
+    const shipBox = new THREE.Box3().setFromObject(myCockpit);
+
+    // 1. Láser vs Asteroide
+    // Usamos bucle inverso para borrar sin errores de índice (ESTO EVITA QUE SE TRABE)
+    for (let i = lasers.length - 1; i >= 0; i--) {
+        const laser = lasers[i];
+        let laserHit = false;
+
+        for (let j = asteroids.length - 1; j >= 0; j--) {
+            const ast = asteroids[j];
+            
+            // Distancia simple (esferas)
+            const dist = laser.position.distanceTo(ast.position);
+            
+            if (dist < 2.5) { // Radio de colisión generoso
+                createExplosion(ast.position);
+                playSound(200, 'sawtooth');
+                
+                // Borrar asteroide
+                scene.remove(ast);
+                asteroids.splice(j, 1);
+                
+                laserHit = true;
+                score += 10;
+                update3DText();
+                
+                // Reemplazar asteroide eliminado
+                spawnAsteroid();
+                break; 
+            }
+        }
+        
+        if (laserHit) {
+            scene.remove(laser);
+            lasers.splice(i, 1);
+        }
+    }
+
+    // 2. Asteroide vs Nave
+    for (let i = asteroids.length - 1; i >= 0; i--) {
+        const ast = asteroids[i];
+        
+        // Si el asteroide está muy cerca de la posición del jugador
+        if (ast.position.distanceTo(shipGroup.position) < 3.0) {
+            createExplosion(shipGroup.position.clone().add(new THREE.Vector3(0,0,-2)));
+            playSound(100, 'square');
+            
+            health -= 20;
+            update3DText();
+            
+            // Eliminar asteroide que chocó
+            scene.remove(ast);
+            asteroids.splice(i, 1);
+
+            if(health <= 0) gameOver();
+        }
+    }
+}
+
+/** ========= CONTROLES ========= */
 const controller1 = renderer.xr.getController(0);
-const controller2 = renderer.xr.getController(1); // Mando derecho dispara
+const controller2 = renderer.xr.getController(1);
 const controllerModelFactory = new XRControllerModelFactory();
 
+// Modelos visibles
 const grip1 = renderer.xr.getControllerGrip(0);
 grip1.add(controllerModelFactory.createControllerModel(grip1));
 const grip2 = renderer.xr.getControllerGrip(1);
@@ -221,44 +366,7 @@ grip2.add(controllerModelFactory.createControllerModel(grip2));
 scene.add(controller1, controller2, grip1, grip2);
 shipGroup.add(controller1, controller2, grip1, grip2);
 
-const lasers = [];
-const laserGeo = new THREE.BoxGeometry(0.1, 0.1, 2);
-const laserMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc }); // Laser Cian
-
-controller2.addEventListener('selectstart', () => {
-    // Crear láser
-    const laser = new THREE.Mesh(laserGeo, laserMat);
-    const pos = new THREE.Vector3(); 
-    controller2.getWorldPosition(pos);
-    const quat = new THREE.Quaternion(); 
-    controller2.getWorldQuaternion(quat);
-    
-    laser.position.copy(pos);
-    laser.quaternion.copy(quat);
-    
-    // Pequeño ajuste para que no salga desde dentro del control
-    laser.translateZ(-0.5); 
-    
-    scene.add(laser);
-    lasers.push(laser);
-    
-    playSound(880, 'square'); // Pew Pew
-});
-
-function playSound(freq, type) {
-    if(!listener.context) return;
-    const osc = listener.context.createOscillator();
-    const gain = listener.context.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, listener.context.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(100, listener.context.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.1, listener.context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, listener.context.currentTime + 0.1);
-    osc.connect(gain);
-    gain.connect(listener.destination);
-    osc.start();
-    osc.stop(listener.context.currentTime + 0.15);
-}
+controller2.addEventListener('selectstart', () => shootLaser(controller2));
 
 /** ========= LOOP PRINCIPAL ========= */
 const clock = new THREE.Clock();
@@ -266,127 +374,88 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
     const dt = clock.getDelta();
 
-    // 1. MOVER NAVE (Mando derecho)
-    if(renderer.xr.isPresenting) {
-        const rot = controller2.rotation;
-        // Invertimos controles para sentir "vuelo"
-        shipGroup.position.x -= rot.z * 10 * dt; 
-        shipGroup.position.y += rot.x * 10 * dt;
-        
-        // Límites (Clamp)
-        shipGroup.position.x = Math.max(-LIMIT_X, Math.min(LIMIT_X, shipGroup.position.x));
-        shipGroup.position.y = Math.max(-2, Math.min(LIMIT_Y, shipGroup.position.y));
-        
-        // Inclinación visual
-        shipGroup.rotation.z = THREE.MathUtils.lerp(shipGroup.rotation.z, -rot.z * 0.5, 0.1);
+    if(currentState === STATE.PLAYING) {
+        // Generación continua de asteroides
+        if(Math.random() < 0.02) spawnAsteroid(); // 2% chance per frame
+
+        // 1. Mover Jugador (Inclinación)
+        if(renderer.xr.isPresenting) {
+            const rot = controller2.rotation;
+            shipGroup.position.x -= rot.z * 15 * dt;
+            shipGroup.position.y += rot.x * 15 * dt;
+            // Límites
+            shipGroup.position.x = THREE.MathUtils.clamp(shipGroup.position.x, -20, 20);
+            shipGroup.position.y = THREE.MathUtils.clamp(shipGroup.position.y, -5, 15);
+            // Efecto visual
+            shipGroup.rotation.z = THREE.MathUtils.lerp(shipGroup.rotation.z, -rot.z * 0.5, 0.1);
+        }
+
+        // 2. Actualizar Láseres (¡LIMPIEZA DE MEMORIA!)
+        for (let i = lasers.length - 1; i >= 0; i--) {
+            const l = lasers[i];
+            l.translateZ(-LASER_SPEED * dt);
+            
+            // Si está muy lejos, eliminar para no saturar memoria
+            if (l.position.distanceTo(shipGroup.position) > 300) {
+                scene.remove(l);
+                l.geometry.dispose(); // Importante
+                lasers.splice(i, 1);
+            }
+        }
+
+        // 3. Actualizar Asteroides (¡LIMPIEZA DE MEMORIA!)
+        for (let i = asteroids.length - 1; i >= 0; i--) {
+            const a = asteroids[i];
+            a.position.z += a.userData.speed * dt;
+            a.rotation.x += a.userData.rot.x;
+            a.rotation.y += a.userData.rot.y;
+
+            // Si pasa detrás del jugador
+            if (a.position.z > 20) {
+                scene.remove(a);
+                a.geometry.dispose(); // Importante
+                asteroids.splice(i, 1);
+            }
+        }
+
+        checkCollisions();
     }
 
-    // 2. MOVER ESTRELLAS (Efecto Warp)
-    const starPosArr = starField.geometry.attributes.position.array;
-    for(let i=0; i<starCount; i++){
-        starPosArr[i*3+2] += (SHIP_SPEED * 2) * dt; 
-        if(starPosArr[i*3+2] > 20) {
-            starPosArr[i*3+2] = -400; // Reset al fondo
+    // 4. Partículas (Siempre se actualizan)
+    for(let i=particles.length-1; i>=0; i--) {
+        const p = particles[i];
+        p.userData.life -= dt * 2.0;
+        const posAttr = p.geometry.attributes.position;
+        const vels = p.userData.vels;
+        
+        for(let j=0; j<vels.length; j++) {
+            posAttr.setXYZ(j, 
+                posAttr.getX(j) + vels[j].x*dt,
+                posAttr.getY(j) + vels[j].y*dt,
+                posAttr.getZ(j) + vels[j].z*dt
+            );
         }
+        posAttr.needsUpdate = true;
+        p.material.opacity = p.userData.life;
+        
+        if(p.userData.life <= 0) {
+            scene.remove(p);
+            p.geometry.dispose();
+            particles.splice(i, 1);
+        }
+    }
+
+    // 5. Mover fondo (Warp Effect)
+    const starPosArr = starField.geometry.attributes.position.array;
+    for(let i=0; i<starsCount; i++) {
+        starPosArr[i*3+2] += (SHIP_SPEED * 1.5) * dt;
+        if(starPosArr[i*3+2] > 400) starPosArr[i*3+2] = -400;
     }
     starField.geometry.attributes.position.needsUpdate = true;
-
-    // 3. GESTIÓN DE LÁSERES (Bucle inverso para evitar crash al borrar)
-    for (let i = lasers.length - 1; i >= 0; i--) {
-        const laser = lasers[i];
-        laser.translateZ(-80 * dt); // Mover hacia adelante muy rápido
-
-        // Distancia máxima de vida del láser
-        if (laser.position.distanceTo(shipGroup.position) > 200) {
-            scene.remove(laser);
-            lasers.splice(i, 1);
-            continue;
-        }
-
-        // COLISIÓN LÁSER vs ASTEROIDE
-        // Iteramos asteroides para ver si tocamos alguno
-        let hit = false;
-        for (let j = 0; j < asteroids.length; j++) {
-            const ast = asteroids[j];
-            if (ast.visible && laser.position.distanceTo(ast.position) < (ast.scale.x + 0.5)) {
-                // IMPACTO CONFIRMADO
-                spawnExplosion(ast.position);
-                playSound(150, 'sawtooth'); // Sonido explosión
-                resetAsteroid(ast); // Destruir y reciclar
-                
-                // Actualizar Score
-                SCORE += 10;
-                updateHUD();
-                
-                hit = true;
-                break; // Un láser solo mata un asteroide
-            }
-        }
-
-        if (hit) {
-            scene.remove(laser);
-            lasers.splice(i, 1);
-        }
-    }
-
-    // 4. GESTIÓN DE ASTEROIDES (Movimiento y Daño al Jugador)
-    const shipPos = shipGroup.position;
-    asteroids.forEach(ast => {
-        // Mover hacia el jugador
-        ast.position.z += SHIP_SPEED * dt;
-        ast.rotation.x += ast.userData.rotSpeed.x;
-        ast.rotation.y += ast.userData.rotSpeed.y;
-
-        // Si pasa detrás, resetear
-        if (ast.position.z > 20) {
-            resetAsteroid(ast);
-        }
-
-        // COLISIÓN ASTEROIDE vs NAVE
-        if (ast.visible && ast.position.distanceTo(shipPos) < 2.5) {
-            spawnExplosion(shipPos.clone().add(new THREE.Vector3(0,0,-2))); // Explosión en cabina
-            playSound(100, 'sawtooth');
-            
-            HEALTH -= 10;
-            resetAsteroid(ast);
-            updateHUD();
-
-            // GAME OVER LOGIC
-            if(HEALTH <= 0) {
-                SCORE = 0;
-                HEALTH = 100;
-                // Pequeño parpadeo rojo o reinicio
-                updateHUD();
-            }
-        }
-    });
-
-    // 5. ANIMAR EXPLOSIONES
-    for(let i=explosions.length-1; i>=0; i--){
-        const exp = explosions[i];
-        exp.userData.life -= dt * 2.0; // Velocidad de desvanecimiento
-        
-        // Mover partículas
-        const positions = exp.geometry.attributes.position.array;
-        const vels = exp.userData.velocities;
-        for(let k=0; k<vels.length; k++){
-            positions[k*3] += vels[k].x * dt;
-            positions[k*3+1] += vels[k].y * dt;
-            positions[k*3+2] += vels[k].z * dt;
-        }
-        exp.geometry.attributes.position.needsUpdate = true;
-        exp.material.opacity = exp.userData.life;
-
-        if(exp.userData.life <= 0){
-            scene.remove(exp);
-            explosions.splice(i, 1);
-        }
-    }
 
     renderer.render(scene, camera);
 });
 
-// Resize window
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
