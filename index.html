@@ -1,22 +1,32 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="utf-8">
-    <title>COSMIC SHOOTER VR</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>AUTOQUEST VR</title>
+    <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-    <audio id="bg-music" loop preload="auto" src="assets/audio/fondo.mp3"></audio>
-    
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-    }
-    </script>
-    <script type="module" src="main.js"></script>
+
+    <!-- Pantalla de inicio -->
+    <div id="start-screen">
+        <h1>🚗 AUTOQUEST VR ✨</h1>
+        <p>Recoge gemas y esquiva obstáculos</p>
+        <button id="start-btn">Iniciar</button>
+        <p class="creditos">Creado por: Ángel Budar</p>
+    </div>
+
+    <!-- Pantalla de fin -->
+    <div id="end-screen" class="hidden">
+        <h1>💥 Juego Terminado 💥</h1>
+        <p id="final-score"></p>
+        <button id="restart-btn">Reiniciar</button>
+    </div>
+
+    <canvas id="xr-canvas"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/webxr/VRButton.js"></script>
+    <script src="main.js"></script>
 </body>
 </html>
