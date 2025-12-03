@@ -1,32 +1,33 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTOQUEST VR</title>
-    <link rel="stylesheet" href="style.css"/>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- Pantalla de inicio -->
-    <div id="start-screen">
-        <h1>🚗 AUTOQUEST VR ✨</h1>
-        <p>Recoge gemas y esquiva obstáculos</p>
-        <button id="start-btn">Iniciar</button>
-        <p class="creditos">Creado por: Ángel Budar</p>
-    </div>
+<!-- PANTALLA DE INICIO -->
+<div id="start-screen">
+    <h1>🚗 AUTOQUEST VR</h1>
+    <p>Esquiva obstáculos y recoge gemas</p>
+    <button id="start-btn">Iniciar</button>
+    <p class="creditos">Creador: Ángel Budar</p>
+</div>
 
-    <!-- Pantalla de fin -->
-    <div id="end-screen" class="hidden">
-        <h1>💥 Juego Terminado 💥</h1>
-        <p id="final-score"></p>
-        <button id="restart-btn">Reiniciar</button>
-    </div>
+<!-- PANTALLA FINAL -->
+<div id="end-screen" class="hidden">
+    <h1>💥 GAME OVER 💥</h1>
+    <p id="final-score"></p>
+    <button id="restart-btn">Reiniciar</button>
+</div>
 
-    <canvas id="xr-canvas"></canvas>
+<canvas id="xr-canvas"></canvas>
 
-    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/webxr/VRButton.js"></script>
-    <script src="main.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/webxr/VRButton.js"></script>
+
+<script src="main.js"></script>
 </body>
 </html>
