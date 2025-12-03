@@ -273,7 +273,7 @@ renderer.setAnimationLoop(() => {
 
     renderer.render(scene, camera);
 });
-
+ 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
