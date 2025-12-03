@@ -1,46 +1,36 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AUTOQUEST VR - Fix</title>
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AUTOQUEST VR</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- START SCREEN -->
-  <div id="startScreen" class="panel">
-    <h1>🚗 AUTOQUEST VR</h1>
-    <p>Recoge gemas y esquiva obstáculos</p>
-    <div class="buttons">
-      <button id="startBtn">Iniciar (gesto requerido)</button>
-      <button id="enterVrBtn">Entrar a VR</button>
+    <div id="uiStart" class="panel">
+        <h1>AUTOQUEST VR</h1>
+        <p>Esquiva y recoge gemas</p>
+        <button id="enterVrBtn">Entrar a VR</button>
+        <button id="startBtn">Iniciar Juego</button>
+        <p class="creator">Creador: Ángel Budar</p>
     </div>
-    <p class="creator">Creador: Ángel Budar</p>
-    <p class="hint">Sirve el sitio por HTTPS o desde un servidor local. En Quest abre la página y pulsa <strong>Entrar a VR</strong>.</p>
-  </div>
 
-  <!-- HUD (oculto hasta iniciar) -->
-  <div id="hud" class="panel hidden hudPanel">
-    <div>Puntuación: <span id="score">0</span></div>
-    <div id="best">Mejor: 0</div>
-    <button id="endBtn" class="small">Terminar</button>
-  </div>
+    <div id="hud" class="panel hidden hudPanel">
+        <div>Puntos: <span id="score">0</span></div>
+        <button id="endBtn">Terminar</button>
+    </div>
 
-  <!-- END SCREEN -->
-  <div id="endScreen" class="panel hidden">
-    <h1>💥 GAME OVER</h1>
-    <p id="finalText">Gemas: 0</p>
-    <button id="restartBtn">Reiniciar</button>
-    <p class="creator">Creador: Ángel Budar</p>
-  </div>
+    <div id="uiEnd" class="panel hidden">
+        <h1>GAME OVER</h1>
+        <p id="finalScore">Puntos: 0</p>
+        <button id="restartBtn">Reiniciar</button>
+    </div>
 
-  <!-- Canvas -->
-  <canvas id="xr-canvas"></canvas>
+    <canvas id="glCanvas"></canvas>
 
-  <!-- three.js (global) -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+    <!-- three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 
-  <!-- main -->
-  <script src="main.js"></script>
+    <script src="main.js"></script>
 </body>
 </html>
