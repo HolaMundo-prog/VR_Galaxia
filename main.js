@@ -5,14 +5,13 @@ import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFa
 // === CONFIGURACIÓN DEL JUEGO ===
 const CONFIG = {
     baseSpeed: 40,         
-    lateralSpeed: 60,      // Sensibilidad alta para esquivar
+    lateralSpeed: 60,      // Sensibilidad alta
     laneWidth: 10,         
-    winScore: 5000,        // Meta alta (50 monedas) para que no acabe rápido
     spawnRate: 0.6         
 };
 
 // Estados
-const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2, WIN: 3 };
+const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2 };
 let currentState = STATE.MENU;
 
 let score = 0;
@@ -69,7 +68,7 @@ function spawnRing() {
     tunnelRings.push(ring);
 }
 
-// === 3. HUD (PANTALLA CON CRÉDITOS) ===
+// === 3. HUD (PANTALLA LIMPIA EN ESQUINA) ===
 const hudCanvas = document.createElement('canvas');
 hudCanvas.width = 1024; hudCanvas.height = 512;
 const hudCtx = hudCanvas.getContext('2d');
@@ -78,51 +77,27 @@ const hudTexture = new THREE.CanvasTexture(hudCanvas);
 function updateHUD(title, subtitle, extraInfo) {
     hudCtx.clearRect(0,0,1024,512);
     
-    // Fondo panel
-    hudCtx.fillStyle = 'rgba(0, 10, 20, 0.85)';
-    hudCtx.fillRect(0,0,1024,512);
-    
-    // Borde de color
-    let color = '#00ffcc'; 
-    if(currentState === STATE.GAMEOVER) color = '#ff0044'; 
-    if(currentState === STATE.WIN) color = '#ffff00'; 
-    
-    hudCtx.lineWidth = 15;
-    hudCtx.strokeStyle = color;
-    hudCtx.strokeRect(10,10,1004,492);
-
-    hudCtx.textAlign = 'center';
-    
-    if (currentState === STATE.PLAYING) {
-        // Marcador en juego
-        hudCtx.fillStyle = '#00ffcc';
-        hudCtx.font = 'bold 80px Arial';
-        hudCtx.fillText(`PUNTOS: ${score} / ${CONFIG.winScore}`, 512, 150);
+    // Si estamos jugando, el fondo es totalmente transparente para ver mejor
+    if (currentState !== STATE.PLAYING) {
+        hudCtx.fillStyle = 'rgba(0, 10, 20, 0.85)';
+        hudCtx.fillRect(0,0,1024,512);
         
-        // Barra
-        hudCtx.fillStyle = '#333';
-        hudCtx.fillRect(212, 200, 600, 30);
-        hudCtx.fillStyle = '#00ffcc';
-        const progress = Math.min((score / CONFIG.winScore) * 600, 600);
-        hudCtx.fillRect(212, 200, progress, 30);
-
-        hudCtx.font = '50px Arial';
-        hudCtx.fillStyle = '#ffffff';
-        hudCtx.fillText("AZUL = Puntos  |  ROJO = Muerte", 512, 350);
-
-    } else {
-        // Pantallas de Menú / Fin
-        hudCtx.shadowColor = color;
-        hudCtx.shadowBlur = 20;
+        let color = '#00ffcc'; 
+        if(currentState === STATE.GAMEOVER) color = '#ff0044'; 
         
+        hudCtx.lineWidth = 15;
+        hudCtx.strokeStyle = color;
+        hudCtx.strokeRect(10,10,1004,492);
+        
+        // Textos centrados para menús
+        hudCtx.textAlign = 'center';
         hudCtx.fillStyle = color;
         hudCtx.font = 'bold 100px Arial';
-        hudCtx.fillText(title || "GALACTIC TUNNEL", 512, 150);
+        hudCtx.fillText(title || "GALACTIC TUNNEL", 512, 180);
         
-        hudCtx.shadowBlur = 0;
         hudCtx.fillStyle = '#ffffff';
         hudCtx.font = '50px Arial';
-        hudCtx.fillText(subtitle || "Reglas: Inclina tu mano para moverte.", 512, 250);
+        hudCtx.fillText(subtitle || "Esquiva Rojo - Toma Amarillo", 512, 280);
         
         if(extraInfo) {
             hudCtx.fillStyle = '#aaaaaa';
@@ -134,18 +109,35 @@ function updateHUD(title, subtitle, extraInfo) {
         hudCtx.fillStyle = '#0088ff';
         hudCtx.font = 'bold 35px Arial';
         hudCtx.fillText("Creado por: Angel Budar Solano", 512, 460);
+
+    } else {
+        // --- HUD DE JUEGO (ESQUINA) ---
+        // Alineación izquierda para no estorbar
+        hudCtx.textAlign = 'left';
+        
+        // Puntos (Arriba Izquierda)
+        hudCtx.fillStyle = '#ffff00'; // Amarillo
+        hudCtx.font = 'bold 80px Arial';
+        hudCtx.fillText(`PTS: ${score}`, 50, 100);
+        
+        // Velocidad (Debajo de puntos)
+        hudCtx.fillStyle = '#00ffcc'; // Cyan
+        hudCtx.font = '50px Arial';
+        hudCtx.fillText(`VEL: ${Math.floor(currentSpeed)} km/h`, 50, 180);
     }
+    
     hudTexture.needsUpdate = true;
 }
 
 // Crear pantalla inicial
-updateHUD("GALACTIC TUNNEL", "REGLAS: Esquiva ROJO, Toma AZUL", "Presiona GATILLO para Iniciar");
+updateHUD("GALACTIC TUNNEL", "REGLAS: Esquiva ROJO, Toma AMARILLO", "Presiona GATILLO para Iniciar");
 
 const hudScreen = new THREE.Mesh(
     new THREE.PlaneGeometry(2.5, 1.25),
     new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true })
 );
-hudScreen.position.set(0, 1.5, -3.5);
+// Posición más alejada y elevada para no tapar la carretera
+hudScreen.position.set(0, 1.8, -4.0);
 playerGroup.add(hudScreen);
 
 // === 4. NAVE ===
@@ -167,11 +159,13 @@ const myCar = createCar();
 myCar.position.set(0, -0.5, -1);
 playerGroup.add(myCar);
 
-// === 5. OBJETOS ===
+// === 5. OBJETOS (AMARILLOS Y ROJOS) ===
 const obstacleGeo = new THREE.BoxGeometry(2, 4, 2); 
 const obstacleMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 }); 
-const coinGeo = new THREE.SphereGeometry(1, 16, 16);
-const coinMat = new THREE.MeshStandardMaterial({ color: 0x0088ff, emissive: 0x0088ff, emissiveIntensity: 1 });
+
+// CAMBIO: Tetraedro Amarillo (Cristal) en lugar de esfera azul
+const coinGeo = new THREE.TetrahedronGeometry(1.2, 0);
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xffdd00, emissive: 0xffaa00, emissiveIntensity: 0.8 });
 
 function spawnItem() {
     if(currentState !== STATE.PLAYING) return;
@@ -184,6 +178,13 @@ function spawnItem() {
     
     const xPos = (Math.random() - 0.5) * CONFIG.laneWidth * 2.2;
     mesh.position.set(xPos, 0.5, -120); 
+    
+    // Rotación aleatoria inicial para los cristales
+    if(isCoin) {
+        mesh.rotation.x = Math.random() * Math.PI;
+        mesh.rotation.z = Math.random() * Math.PI;
+    }
+
     mesh.userData = { type: isCoin ? 'coin' : 'obstacle', active: true };
     
     scene.add(mesh);
@@ -197,19 +198,14 @@ function playSound(type) {
     const gain = listener.context.createGain();
     
     if (type === 'coin') {
-        osc.frequency.setValueAtTime(600, listener.context.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1200, listener.context.currentTime + 0.1);
+        osc.frequency.setValueAtTime(800, listener.context.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1500, listener.context.currentTime + 0.1);
         gain.gain.setValueAtTime(0.2, listener.context.currentTime);
     } else if (type === 'crash') {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(150, listener.context.currentTime);
         osc.frequency.exponentialRampToValueAtTime(10, listener.context.currentTime + 0.5);
         gain.gain.setValueAtTime(0.5, listener.context.currentTime);
-    } else if (type === 'win') {
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(400, listener.context.currentTime);
-        osc.frequency.linearRampToValueAtTime(800, listener.context.currentTime + 1.0);
-        gain.gain.setValueAtTime(0.3, listener.context.currentTime);
     }
     
     gain.gain.exponentialRampToValueAtTime(0.01, listener.context.currentTime + (type==='crash'?0.5:0.2));
@@ -256,8 +252,9 @@ let ringTimer = 0;
 renderer.setAnimationLoop(() => {
     const dt = clock.getDelta();
 
-    // -- EFECTOS DE FONDO (Siempre corren para que no se sienta trabado) --
-    const bgSpeed = (currentState === STATE.PLAYING) ? currentSpeed : 10;
+    // -- EFECTOS DE FONDO --
+    // Siempre se mueven, incluso en Game Over, para evitar sensación de congelamiento
+    const bgSpeed = (currentState === STATE.PLAYING) ? currentSpeed : 15; // Velocidad lenta si moriste
     
     grid.position.z += bgSpeed * dt;
     if(grid.position.z > 20) grid.position.z = 0;
@@ -279,7 +276,7 @@ renderer.setAnimationLoop(() => {
 
     // -- LÓGICA DE JUEGO --
     if (currentState === STATE.PLAYING) {
-        currentSpeed += dt * 0.5; // Acelerar
+        currentSpeed += dt * 0.5; // Acelerar infinitamente
 
         // Control
         if (renderer.xr.isPresenting) {
@@ -305,22 +302,28 @@ renderer.setAnimationLoop(() => {
         for (let i = items.length - 1; i >= 0; i--) {
             const item = items[i];
             item.position.z += currentSpeed * dt;
-            item.rotation.x += dt * 2;
-            item.rotation.y += dt * 2;
+            
+            // Rotación especial para cristales
+            if(item.userData.type === 'coin') {
+                item.rotation.x += dt * 2;
+                item.rotation.z += dt * 3;
+            }
 
             const distZ = Math.abs(item.position.z - playerGroup.position.z);
             const distX = Math.abs(item.position.x - playerGroup.position.x);
 
+            // COLISIONES
             if (item.userData.active && distZ < 2.0 && distX < 1.5) {
                 item.userData.active = false;
                 scene.remove(item);
                 items.splice(i, 1);
                 
                 if (item.userData.type === 'coin') {
+                    // PUNTO - SIN PARAR EL JUEGO
                     score += 100;
                     playSound('coin');
                     
-                    // Efecto Turbo
+                    // Efecto Turbo visual
                     camera.fov = 85; 
                     camera.updateProjectionMatrix();
                     setTimeout(() => {
@@ -328,18 +331,14 @@ renderer.setAnimationLoop(() => {
                         camera.updateProjectionMatrix();
                     }, 200);
 
-                    updateHUD();
-                    
-                    // Meta: 5000 puntos
-                    if (score >= CONFIG.winScore) {
-                        currentState = STATE.WIN;
-                        playSound('win');
-                        updateHUD("¡MISIÓN CUMPLIDA!", `Puntaje Máximo: ${score}`, "Angel Budar Solano te felicita.");
-                    }
+                    updateHUD(); 
+                    // NOTA: Eliminamos la condición de victoria que detenía el juego.
+                    // Ahora es infinito.
                 } else {
+                    // CHOQUE
                     currentState = STATE.GAMEOVER;
                     playSound('crash');
-                    updateHUD("GAME OVER", "Te estrellaste.", "Inténtalo de nuevo.");
+                    updateHUD("GAME OVER", "Te estrellaste.", `Puntaje Final: ${score}`);
                 }
                 continue;
             }
@@ -350,8 +349,18 @@ renderer.setAnimationLoop(() => {
             }
         }
     } else {
-        // En menu/gameover rotamos la nave lentamente
+        // En menu/gameover
         myCar.rotation.y = Math.sin(clock.getElapsedTime()) * 0.1;
+        
+        // Mover items restantes lentamente hacia atrás para que no se queden congelados en el aire
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            item.position.z += 15 * dt;
+             if (item.position.z > 5) {
+                scene.remove(item);
+                items.splice(i, 1);
+            }
+        }
     }
 
     renderer.render(scene, camera);
