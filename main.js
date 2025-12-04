@@ -4,18 +4,20 @@ import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFa
 
 // === CONFIGURACIÓN DEL JUEGO ===
 const CONFIG = {
-    baseSpeed: 40,         
-    lateralSpeed: 60,      // Sensibilidad alta
+    baseSpeed: 35,         // Velocidad inicial
+    lateralSpeed: 60,      // Sensibilidad de volante
     laneWidth: 10,         
-    spawnRate: 0.6         
+    spawnRate: 0.8,        // Frecuencia inicial de obstáculos
+    timeToWin: 120         // 2 minutos (120 segundos) para ganar
 };
 
 // Estados
-const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2 };
+const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2, WIN: 3 };
 let currentState = STATE.MENU;
 
-let score = 0;
+let score = 0;          // Puntos = Tiempo sobrevivido (segundos)
 let currentSpeed = CONFIG.baseSpeed;
+let survivalTime = 0;
 let items = []; 
 let tunnelRings = []; 
 
@@ -46,7 +48,7 @@ renderer.xr.addEventListener('sessionstart', () => {
 });
 
 // === 2. ENTORNO ===
-// Grid en movimiento
+// Grid
 const grid = new THREE.GridHelper(400, 100, 0xff00ff, 0x110033);
 grid.position.y = -2;
 scene.add(grid);
@@ -57,7 +59,7 @@ dirLight.position.set(0, 20, 10);
 scene.add(dirLight);
 scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-// Anillos del túnel (Neon)
+// Anillos
 const ringGeo = new THREE.TorusGeometry(18, 0.3, 8, 32);
 const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2 });
 
@@ -68,7 +70,7 @@ function spawnRing() {
     tunnelRings.push(ring);
 }
 
-// === 3. HUD (PANTALLA LIMPIA EN ESQUINA) ===
+// === 3. HUD (MODO SUPERVIVENCIA) ===
 const hudCanvas = document.createElement('canvas');
 hudCanvas.width = 1024; hudCanvas.height = 512;
 const hudCtx = hudCanvas.getContext('2d');
@@ -77,32 +79,32 @@ const hudTexture = new THREE.CanvasTexture(hudCanvas);
 function updateHUD(title, subtitle, extraInfo) {
     hudCtx.clearRect(0,0,1024,512);
     
-    // Si estamos jugando, el fondo es totalmente transparente para ver mejor
+    // Panel para Menús
     if (currentState !== STATE.PLAYING) {
-        hudCtx.fillStyle = 'rgba(0, 10, 20, 0.85)';
+        hudCtx.fillStyle = 'rgba(0, 10, 20, 0.9)';
         hudCtx.fillRect(0,0,1024,512);
         
         let color = '#00ffcc'; 
         if(currentState === STATE.GAMEOVER) color = '#ff0044'; 
+        if(currentState === STATE.WIN) color = '#ffff00';
         
         hudCtx.lineWidth = 15;
         hudCtx.strokeStyle = color;
         hudCtx.strokeRect(10,10,1004,492);
         
-        // Textos centrados para menús
         hudCtx.textAlign = 'center';
         hudCtx.fillStyle = color;
-        hudCtx.font = 'bold 100px Arial';
-        hudCtx.fillText(title || "GALACTIC TUNNEL", 512, 180);
+        hudCtx.font = 'bold 90px Arial';
+        hudCtx.fillText(title || "GALACTIC SURVIVAL", 512, 160);
         
         hudCtx.fillStyle = '#ffffff';
         hudCtx.font = '50px Arial';
-        hudCtx.fillText(subtitle || "Esquiva Rojo - Toma Amarillo", 512, 280);
+        hudCtx.fillText(subtitle || "SOBREVIVE 2 MINUTOS", 512, 260);
         
         if(extraInfo) {
             hudCtx.fillStyle = '#aaaaaa';
             hudCtx.font = 'italic 40px Arial';
-            hudCtx.fillText(extraInfo, 512, 400);
+            hudCtx.fillText(extraInfo, 512, 380);
         }
         
         // CRÉDITOS
@@ -111,32 +113,38 @@ function updateHUD(title, subtitle, extraInfo) {
         hudCtx.fillText("Creado por: Angel Budar Solano", 512, 460);
 
     } else {
-        // --- HUD DE JUEGO (ESQUINA) ---
-        // Alineación izquierda para no estorbar
+        // --- HUD DE JUEGO (SUPERVIVENCIA) ---
         hudCtx.textAlign = 'left';
         
-        // Puntos (Arriba Izquierda)
-        hudCtx.fillStyle = '#ffff00'; // Amarillo
-        hudCtx.font = 'bold 80px Arial';
-        hudCtx.fillText(`PTS: ${score}`, 50, 100);
+        // Tiempo Sobrevivido (Grande)
+        const timeLeft = Math.max(0, CONFIG.timeToWin - survivalTime);
+        const mins = Math.floor(timeLeft / 60);
+        const secs = Math.floor(timeLeft % 60).toString().padStart(2, '0');
         
-        // Velocidad (Debajo de puntos)
-        hudCtx.fillStyle = '#00ffcc'; // Cyan
+        hudCtx.fillStyle = timeLeft < 30 ? '#ff0044' : '#00ffcc'; // Rojo si queda poco
+        hudCtx.font = 'bold 80px Monospace';
+        hudCtx.fillText(`META: ${mins}:${secs}`, 50, 100);
+        
+        // Velocidad
+        hudCtx.fillStyle = '#ffff00'; 
         hudCtx.font = '50px Arial';
-        hudCtx.fillText(`VEL: ${Math.floor(currentSpeed)} km/h`, 50, 180);
+        hudCtx.fillText(`VELOCIDAD: ${Math.floor(currentSpeed)} km/h`, 50, 180);
+        
+        // Objetos Esquivados
+        hudCtx.fillStyle = '#ffffff';
+        hudCtx.font = '40px Arial';
+        hudCtx.fillText(`ESQUIVADOS: ${score}`, 50, 250);
     }
     
     hudTexture.needsUpdate = true;
 }
 
-// Crear pantalla inicial
-updateHUD("GALACTIC TUNNEL", "REGLAS: Esquiva ROJO, Toma AMARILLO", "Presiona GATILLO para Iniciar");
+updateHUD("GALACTIC SURVIVAL", "OBJETIVO: Sobrevivir 2 Minutos", "Presiona GATILLO para Iniciar");
 
 const hudScreen = new THREE.Mesh(
     new THREE.PlaneGeometry(2.5, 1.25),
     new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true })
 );
-// Posición más alejada y elevada para no tapar la carretera
 hudScreen.position.set(0, 1.8, -4.0);
 playerGroup.add(hudScreen);
 
@@ -159,34 +167,33 @@ const myCar = createCar();
 myCar.position.set(0, -0.5, -1);
 playerGroup.add(myCar);
 
-// === 5. OBJETOS (AMARILLOS Y ROJOS) ===
-const obstacleGeo = new THREE.BoxGeometry(2, 4, 2); 
-const obstacleMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 }); 
+// === 5. OBSTÁCULOS (LETALES) ===
+// Dos tipos de obstáculos para variedad visual, ambos matan
+const boxGeo = new THREE.BoxGeometry(2, 4, 2); 
+const boxMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 }); 
 
-// CAMBIO: Tetraedro Amarillo (Cristal) en lugar de esfera azul
-const coinGeo = new THREE.TetrahedronGeometry(1.2, 0);
-const coinMat = new THREE.MeshStandardMaterial({ color: 0xffdd00, emissive: 0xffaa00, emissiveIntensity: 0.8 });
+const spikeGeo = new THREE.ConeGeometry(1.5, 4, 8);
+const spikeMat = new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0xaa2200 }); 
 
 function spawnItem() {
     if(currentState !== STATE.PLAYING) return;
     
-    const isCoin = Math.random() > 0.5; 
+    const isSpike = Math.random() > 0.5; 
     const mesh = new THREE.Mesh(
-        isCoin ? coinGeo : obstacleGeo,
-        isCoin ? coinMat : obstacleMat
+        isSpike ? spikeGeo : boxGeo,
+        isSpike ? spikeMat : boxMat
     );
     
+    // Posición aleatoria
     const xPos = (Math.random() - 0.5) * CONFIG.laneWidth * 2.2;
     mesh.position.set(xPos, 0.5, -120); 
     
-    // Rotación aleatoria inicial para los cristales
-    if(isCoin) {
-        mesh.rotation.x = Math.random() * Math.PI;
-        mesh.rotation.z = Math.random() * Math.PI;
+    if(isSpike) {
+        mesh.rotation.x = Math.random() * 0.5; 
+        mesh.userData.rotSpeed = Math.random() * 2;
     }
 
-    mesh.userData = { type: isCoin ? 'coin' : 'obstacle', active: true };
-    
+    mesh.userData = { active: true }; // Todos son peligrosos
     scene.add(mesh);
     items.push(mesh);
 }
@@ -197,15 +204,20 @@ function playSound(type) {
     const osc = listener.context.createOscillator();
     const gain = listener.context.createGain();
     
-    if (type === 'coin') {
-        osc.frequency.setValueAtTime(800, listener.context.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1500, listener.context.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.2, listener.context.currentTime);
+    if (type === 'pass') { // Sonido suave al esquivar
+        osc.frequency.setValueAtTime(400, listener.context.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, listener.context.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.05, listener.context.currentTime);
     } else if (type === 'crash') {
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(150, listener.context.currentTime);
+        osc.frequency.setValueAtTime(100, listener.context.currentTime);
         osc.frequency.exponentialRampToValueAtTime(10, listener.context.currentTime + 0.5);
         gain.gain.setValueAtTime(0.5, listener.context.currentTime);
+    } else if (type === 'win') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(400, listener.context.currentTime);
+        osc.frequency.linearRampToValueAtTime(800, listener.context.currentTime + 1.0);
+        gain.gain.setValueAtTime(0.3, listener.context.currentTime);
     }
     
     gain.gain.exponentialRampToValueAtTime(0.01, listener.context.currentTime + (type==='crash'?0.5:0.2));
@@ -233,14 +245,12 @@ function resetGame() {
     tunnelRings.forEach(r => scene.remove(r));
     tunnelRings = [];
     
-    score = 0;
+    score = 0; // Objetos esquivados
+    survivalTime = 0;
     currentSpeed = CONFIG.baseSpeed;
     currentState = STATE.PLAYING;
     playerGroup.position.x = 0;
     
-    camera.fov = 75;
-    camera.updateProjectionMatrix();
-
     updateHUD();
 }
 
@@ -248,20 +258,19 @@ function resetGame() {
 const clock = new THREE.Clock();
 let spawnTimer = 0;
 let ringTimer = 0;
+let difficultyTimer = 0;
 
 renderer.setAnimationLoop(() => {
     const dt = clock.getDelta();
 
     // -- EFECTOS DE FONDO --
-    // Siempre se mueven, incluso en Game Over, para evitar sensación de congelamiento
-    const bgSpeed = (currentState === STATE.PLAYING) ? currentSpeed : 15; // Velocidad lenta si moriste
+    const bgSpeed = (currentState === STATE.PLAYING) ? currentSpeed : 10;
     
     grid.position.z += bgSpeed * dt;
     if(grid.position.z > 20) grid.position.z = 0;
 
-    // Anillos de fondo
     ringTimer += dt;
-    if(ringTimer > 0.4) {
+    if(ringTimer > (15 / bgSpeed)) { // Spawn anillos basado en velocidad
         spawnRing();
         ringTimer = 0;
     }
@@ -276,7 +285,24 @@ renderer.setAnimationLoop(() => {
 
     // -- LÓGICA DE JUEGO --
     if (currentState === STATE.PLAYING) {
-        currentSpeed += dt * 0.5; // Acelerar infinitamente
+        survivalTime += dt;
+        
+        // Aumentar dificultad cada 10 segundos
+        difficultyTimer += dt;
+        if(difficultyTimer > 10) {
+            currentSpeed += 5; // Más rápido
+            CONFIG.spawnRate *= 0.9; // Más frecuente (reduce el tiempo entre spawns)
+            difficultyTimer = 0;
+        }
+
+        // Victoria por Tiempo (2 minutos)
+        if(survivalTime >= CONFIG.timeToWin) {
+            currentState = STATE.WIN;
+            playSound('win');
+            updateHUD("¡SOBREVIVISTE!", `Tiempo Total: 2:00`, "¡Misión Cumplida, Comandante!");
+        } else {
+            updateHUD(); // Actualizar reloj
+        }
 
         // Control
         if (renderer.xr.isPresenting) {
@@ -291,56 +317,34 @@ renderer.setAnimationLoop(() => {
             myCar.rotation.y = -rot * 0.3;
         }
 
-        // Spawn Items
+        // Spawn Obstáculos
         spawnTimer += dt;
-        if(spawnTimer > (20 / currentSpeed)) {
+        if(spawnTimer > CONFIG.spawnRate) {
             spawnItem();
             spawnTimer = 0;
         }
 
-        // Mover Items y Colisiones
+        // Mover Obstáculos y Colisiones
         for (let i = items.length - 1; i >= 0; i--) {
             const item = items[i];
             item.position.z += currentSpeed * dt;
-            
-            // Rotación especial para cristales
-            if(item.userData.type === 'coin') {
-                item.rotation.x += dt * 2;
-                item.rotation.z += dt * 3;
-            }
+            if(item.userData.rotSpeed) item.rotation.y += item.userData.rotSpeed * dt;
 
             const distZ = Math.abs(item.position.z - playerGroup.position.z);
             const distX = Math.abs(item.position.x - playerGroup.position.x);
 
-            // COLISIONES
+            // COLISIÓN (GAME OVER SI TOCAS ALGO)
             if (item.userData.active && distZ < 2.0 && distX < 1.5) {
-                item.userData.active = false;
-                scene.remove(item);
-                items.splice(i, 1);
-                
-                if (item.userData.type === 'coin') {
-                    // PUNTO - SIN PARAR EL JUEGO
-                    score += 100;
-                    playSound('coin');
-                    
-                    // Efecto Turbo visual
-                    camera.fov = 85; 
-                    camera.updateProjectionMatrix();
-                    setTimeout(() => {
-                        camera.fov = 75;
-                        camera.updateProjectionMatrix();
-                    }, 200);
+                currentState = STATE.GAMEOVER;
+                playSound('crash');
+                updateHUD("GAME OVER", "Impacto Crítico Detectado", `Sobreviviste: ${Math.floor(survivalTime)} seg`);
+            }
 
-                    updateHUD(); 
-                    // NOTA: Eliminamos la condición de victoria que detenía el juego.
-                    // Ahora es infinito.
-                } else {
-                    // CHOQUE
-                    currentState = STATE.GAMEOVER;
-                    playSound('crash');
-                    updateHUD("GAME OVER", "Te estrellaste.", `Puntaje Final: ${score}`);
-                }
-                continue;
+            // PUNTOS POR ESQUIVAR (Pasar el objeto)
+            if (item.userData.active && item.position.z > 2.0) {
+                item.userData.active = false; // Ya pasó
+                score++; // Esquivado +1
+                playSound('pass');
             }
 
             if (item.position.z > 5) {
@@ -352,10 +356,10 @@ renderer.setAnimationLoop(() => {
         // En menu/gameover
         myCar.rotation.y = Math.sin(clock.getElapsedTime()) * 0.1;
         
-        // Mover items restantes lentamente hacia atrás para que no se queden congelados en el aire
+        // Mover items restantes lentamente para que no se congelen
         for (let i = items.length - 1; i >= 0; i--) {
             const item = items[i];
-            item.position.z += 15 * dt;
+            item.position.z += 10 * dt;
              if (item.position.z > 5) {
                 scene.remove(item);
                 items.splice(i, 1);
