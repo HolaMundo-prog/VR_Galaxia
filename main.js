@@ -5,10 +5,10 @@ import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFa
 // === CONFIGURACIÓN ===
 const CONFIG = {
     baseSpeed: 45,         
-    lateralSpeed: 70,      
-    laneWidth: 12,         
-    spawnRate: 0.8,        
-    timeToWin: 300 // 5 Minutos (300 segundos)
+    lateralSpeed: 90,      // Aumentada para esquivar a altas velocidades
+    laneWidth: 14,         // Un poco más ancho para dar oportunidad
+    spawnRate: 0.8,        // Valor inicial (se reducirá drásticamente)
+    timeToWin: 300         // 5 Minutos
 };
 
 // Estados
@@ -20,7 +20,7 @@ let survivalTime = 0;
 let items = []; 
 let tunnelRings = []; 
 let warpParticles = []; 
-let speedLines = []; // Ases de luz
+let speedLines = []; 
 let frameCount = 0; 
 
 // === 1. ESCENA ===
@@ -35,7 +35,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(0x000000, 0.015);
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 400);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 500); // Far plane aumentado
 const playerGroup = new THREE.Group();
 scene.add(playerGroup);
 
@@ -53,14 +53,14 @@ renderer.xr.addEventListener('sessionstart', () => {
 });
 
 // === 2. ENTORNO ===
-const grid = new THREE.GridHelper(600, 150, 0xff00cc, 0x110022); 
+const grid = new THREE.GridHelper(800, 200, 0xff00cc, 0x110022); 
 grid.position.y = -4;
 scene.add(grid);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 2);
 dirLight.position.set(0, 20, 10);
 scene.add(dirLight);
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
 // Anillos
 const ringGeo = new THREE.TorusGeometry(25, 0.5, 8, 32);
@@ -68,32 +68,31 @@ const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true
 
 function spawnRing() {
     const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.z = -200; 
+    ring.position.z = -250; // Aparecen más lejos por la velocidad
     scene.add(ring);
     tunnelRings.push(ring);
 }
 
-// Warp Particles (Estrellas)
+// Warp Particles
 const warpGeo = new THREE.BufferGeometry();
-const warpCount = 1000;
+const warpCount = 1500; // Más partículas
 const warpPos = new Float32Array(warpCount * 3);
-for(let i=0; i<warpCount*3; i++) warpPos[i] = (Math.random()-0.5)*100;
+for(let i=0; i<warpCount*3; i++) warpPos[i] = (Math.random()-0.5)*150;
 warpGeo.setAttribute('position', new THREE.BufferAttribute(warpPos, 3));
 const warpMat = new THREE.PointsMaterial({color: 0xffffff, size: 0.2, transparent: true, opacity: 0.8});
 const warpSystem = new THREE.Points(warpGeo, warpMat);
 scene.add(warpSystem);
 
-// Ases de Luz (Speed Lines)
+// Ases de Luz
 function createSpeedLine() {
-    const geo = new THREE.BoxGeometry(0.1, 0.1, 10);
+    const geo = new THREE.BoxGeometry(0.1, 0.1, 30); // Líneas más largas
     const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.0 });
     const line = new THREE.Mesh(geo, mat);
-    line.position.set((Math.random()-0.5)*40, (Math.random()-0.5)*20, -100);
+    line.position.set((Math.random()-0.5)*60, (Math.random()-0.5)*30, -150);
     scene.add(line);
     speedLines.push(line);
 }
-// Crear pool inicial de líneas
-for(let i=0; i<20; i++) createSpeedLine();
+for(let i=0; i<30; i++) createSpeedLine();
 
 
 // === 3. HUD ===
@@ -106,14 +105,14 @@ function updateHUD(title, subtitle, extraInfo) {
     hudCtx.clearRect(0,0,1024,512);
     
     if (currentState === STATE.PLAYING) {
-        // --- HUD JUGANDO ---
         hudCtx.textAlign = 'left';
         
         const mins = Math.floor(survivalTime / 60);
         const secs = Math.floor(survivalTime % 60).toString().padStart(2, '0');
         const ms = Math.floor((survivalTime % 1) * 100).toString().padStart(2, '0');
         
-        hudCtx.fillStyle = survivalTime > 250 ? '#ff00cc' : '#00ffcc';
+        // Color de alarma si vas muy rápido
+        hudCtx.fillStyle = currentSpeed > 180 ? '#ff0055' : '#00ffcc';
         hudCtx.font = 'bold 90px Monospace';
         hudCtx.fillText(`${mins}:${secs}:${ms}`, 50, 100);
         
@@ -130,7 +129,6 @@ function updateHUD(title, subtitle, extraInfo) {
         hudCtx.fillText("Botón Grip: Reinicio Rápido", 500, 450);
 
     } else {
-        // --- MENÚ / GAME OVER ---
         hudCtx.fillStyle = 'rgba(0, 0, 0, 0.95)';
         hudCtx.fillRect(0,0,1024,512);
         
@@ -153,19 +151,17 @@ function updateHUD(title, subtitle, extraInfo) {
         hudCtx.fillText(subtitle || "OBJETIVO: Sobrevivir 5 Minutos", 512, 250);
         
         if(extraInfo) {
-            hudCtx.fillStyle = '#ff3333'; // Rojo para resaltar advertencia
+            hudCtx.fillStyle = '#ff3333';
             hudCtx.font = 'bold 45px Arial';
             hudCtx.fillText(extraInfo, 512, 350);
         }
         
-        // Botón
         hudCtx.fillStyle = color;
         hudCtx.fillRect(312, 380, 400, 60);
         hudCtx.fillStyle = '#000000';
         hudCtx.font = 'bold 40px Arial';
         hudCtx.fillText(currentState === STATE.GAMEOVER ? "GATILLO: REINTENTAR" : "GATILLO: INICIAR", 512, 425);
 
-        // Créditos
         hudCtx.textAlign = 'right';
         hudCtx.fillStyle = '#0088ff';
         hudCtx.font = 'bold 25px Arial';
@@ -175,7 +171,7 @@ function updateHUD(title, subtitle, extraInfo) {
     hudTexture.needsUpdate = true;
 }
 
-updateHUD("GALACTIC RACER", "Sobrevive 5 Minutos para Ganar", "Si chocas pierdes. ¡Esquiva!");
+updateHUD("GALACTIC RACER", "Sobrevive 5 Minutos para Ganar", "Si chocas pierdes. ¡Velocidad Extrema!");
 
 const hudScreen = new THREE.Mesh(
     new THREE.PlaneGeometry(3.5, 1.75),
@@ -228,10 +224,11 @@ function spawnItem() {
         isSpike ? spikeMat : boxMat
     );
     
-    const xPos = (Math.random() - 0.5) * CONFIG.laneWidth * 2.5;
-    mesh.position.set(xPos, 0, -200); 
+    // Rango más amplio de aparición
+    const xPos = (Math.random() - 0.5) * CONFIG.laneWidth * 2.8;
+    mesh.position.set(xPos, 0, -250); // Aparecen lejos
     
-    if(isSpike) mesh.userData.rotSpeed = Math.random() * 3;
+    if(isSpike) mesh.userData.rotSpeed = Math.random() * 5; // Rotación más rápida
     mesh.userData.active = true;
     
     scene.add(mesh);
@@ -271,7 +268,7 @@ function setupController(index) {
     playerGroup.add(controller, grip);
 
     controller.addEventListener('selectstart', handleInput);
-    controller.addEventListener('squeezestart', resetGame); // Grip para reinicio rápido
+    controller.addEventListener('squeezestart', resetGame);
     return controller;
 }
 
@@ -294,7 +291,6 @@ function triggerGameOver() {
     currentState = STATE.GAMEOVER;
     playSound('crash');
     
-    // Instrucciones claras de pérdida
     updateHUD("GAME OVER", "¡CHOCASTE!", "Presiona GATILLO para REINTENTAR");
 }
 
@@ -320,44 +316,42 @@ function resetGame() {
 const clock = new THREE.Clock();
 let spawnTimer = 0;
 let ringTimer = 0;
-let diffTimer = 0;
 
 renderer.setAnimationLoop(() => {
     const dt = clock.getDelta();
     frameCount++;
 
-    // Fondo siempre moviéndose
     const bgSpeed = (currentState === STATE.PLAYING) ? currentSpeed : 10;
     
     grid.position.z += bgSpeed * dt;
     if(grid.position.z > 20) grid.position.z = 0;
 
-    // Warp Particles
     const positions = warpSystem.geometry.attributes.position.array;
     for(let i=0; i<warpCount; i++) {
-        positions[i*3 + 2] += bgSpeed * dt * 2;
+        positions[i*3 + 2] += bgSpeed * dt * 2.5; // Estrellas más rápidas
         if(positions[i*3 + 2] > 20) positions[i*3 + 2] = -200;
     }
     warpSystem.geometry.attributes.position.needsUpdate = true;
 
-    // Speed Lines (Ases de luz)
-    if (currentState === STATE.PLAYING && currentSpeed > 60) {
+    // Ases de Luz (Speed Lines) Dinámicos
+    if (currentState === STATE.PLAYING && currentSpeed > 100) {
         speedLines.forEach(line => {
             line.position.z += bgSpeed * dt * 3;
-            line.material.opacity = (currentSpeed - 50) * 0.01; // Más visibles si vas rápido
+            // Opacidad basada en velocidad
+            line.material.opacity = Math.min(0.8, (currentSpeed - 80) * 0.005); 
             if(line.position.z > 10) {
-                line.position.z = -150 - Math.random()*50;
-                line.position.x = (Math.random()-0.5)*50;
-                line.position.y = (Math.random()-0.5)*30;
+                line.position.z = -150 - Math.random()*100;
+                line.position.x = (Math.random()-0.5)*60;
+                line.position.y = (Math.random()-0.5)*40;
             }
         });
     } else {
         speedLines.forEach(l => l.material.opacity = 0);
     }
 
-    // Anillos
     ringTimer += dt;
-    if(ringTimer > (20 / bgSpeed)) {
+    // Anillos pasan volando a alta velocidad
+    if(ringTimer > (30 / bgSpeed)) {
         spawnRing();
         ringTimer = 0;
     }
@@ -373,18 +367,19 @@ renderer.setAnimationLoop(() => {
     if (currentState === STATE.PLAYING) {
         survivalTime += dt;
 
-        if(frameCount % 15 === 0) updateHUD();
+        if(frameCount % 10 === 0) updateHUD();
 
-        // Dificultad incremental suave
-        diffTimer += dt;
-        if(diffTimer > 15) { // Cada 15 segundos
-            currentSpeed += 2; // Aumentar poco a poco
-            if(currentSpeed > 120) currentSpeed = 120; // Límite para que sea posible
-            
-            CONFIG.spawnRate *= 0.98; // Spawn un poco más rápido
-            diffTimer = 0;
-        }
+        // --- LÓGICA DE DIFICULTAD AGRESIVA ---
+        // Incremento lineal constante para llegar a >180 km/h a los 3 minutos
+        // Formula: Speed = Base + (Time * Factor)
+        // Meta: 45 + (180 * 0.8) = ~190 km/h
+        currentSpeed = CONFIG.baseSpeed + (survivalTime * 0.85);
         
+        // Spawn Rate disminuye (más objetos) conforme aumenta la velocidad
+        // Minimo 0.15s entre objetos (Lluvia de asteroides al final)
+        const targetSpawn = Math.max(0.15, 0.8 - (survivalTime * 0.0025));
+        CONFIG.spawnRate = targetSpawn;
+
         if(survivalTime >= CONFIG.timeToWin) {
             currentState = STATE.WIN;
             playSound('win');
@@ -398,8 +393,8 @@ renderer.setAnimationLoop(() => {
             
             playerGroup.position.x = Math.max(-CONFIG.laneWidth, Math.min(CONFIG.laneWidth, playerGroup.position.x));
             
-            myShip.rotation.z = -rot * 0.5;
-            myShip.rotation.y = -rot * 0.2;
+            myShip.rotation.z = -rot * 0.6; // Más inclinación
+            myShip.rotation.y = -rot * 0.3;
         }
 
         // Spawn
@@ -409,18 +404,18 @@ renderer.setAnimationLoop(() => {
             spawnTimer = 0;
         }
 
-        // Obstáculos y Colisiones
         for (let i = items.length - 1; i >= 0; i--) {
             const item = items[i];
             item.position.z += currentSpeed * dt;
-            if(item.userData.rotSpeed) item.rotation.y += item.userData.rotSpeed * dt;
+            if(item.userData.rotSpeed) {
+                item.rotation.y += item.userData.rotSpeed * dt;
+                item.rotation.x += item.userData.rotSpeed * dt;
+            }
 
-            // Hitbox
             const distZ = Math.abs(item.position.z - playerGroup.position.z);
             const distX = Math.abs(item.position.x - playerGroup.position.x);
 
-            // Colisión precisa
-            if (item.userData.active && distZ < 2.0 && distX < 1.8) {
+            if (item.userData.active && distZ < 2.2 && distX < 1.8) {
                 triggerGameOver();
             }
 
@@ -430,16 +425,15 @@ renderer.setAnimationLoop(() => {
             }
         }
         
-        // Temblor
-        shakeGroup.position.x = (Math.random() - 0.5) * (currentSpeed * 0.0005);
-        shakeGroup.position.y = (Math.random() - 0.5) * (currentSpeed * 0.0005);
+        // Temblor intenso a alta velocidad
+        const shakeAmp = (currentSpeed * 0.0008); 
+        shakeGroup.position.x = (Math.random() - 0.5) * shakeAmp;
+        shakeGroup.position.y = (Math.random() - 0.5) * shakeAmp;
 
     } else {
-        // Animación pasiva
         myShip.rotation.z = Math.sin(clock.getElapsedTime()) * 0.1;
         shakeGroup.position.set(0,0,0);
         
-        // Limpieza visual suave
         for (let i = items.length - 1; i >= 0; i--) {
             const item = items[i];
             item.position.z += 10 * dt;
