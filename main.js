@@ -115,6 +115,11 @@ function updateHUD(title, subtitle, extraInfo) {
         hudCtx.font = 'bold 60px Arial';
         hudCtx.fillText(`${Math.floor(currentSpeed)} KM/H`, 50, 450);
 
+        // Ayuda Botón Grip
+        hudCtx.font = '30px Arial';
+        hudCtx.fillStyle = '#aaaaaa';
+        hudCtx.fillText("Botón Grip: Reinicio Rápido", 500, 450);
+
     } else {
         // --- PANTALLAS MENÚ / GAME OVER ---
         hudCtx.fillStyle = 'rgba(0, 0, 0, 0.95)';
@@ -149,10 +154,15 @@ function updateHUD(title, subtitle, extraInfo) {
         
         // Botón Simulado
         hudCtx.fillStyle = color;
-        hudCtx.fillRect(312, 400, 400, 80);
+        hudCtx.fillRect(312, 380, 400, 60);
         hudCtx.fillStyle = '#000000';
         hudCtx.font = 'bold 40px Arial';
-        hudCtx.fillText(currentState === STATE.GAMEOVER ? "GATILLO: REINICIAR" : "GATILLO: INICIAR", 512, 455);
+        hudCtx.fillText(currentState === STATE.GAMEOVER ? "GATILLO: REINICIAR" : "GATILLO: INICIAR", 512, 425);
+
+        // CRÉDITOS ACTUALIZADOS
+        hudCtx.fillStyle = '#0088ff';
+        hudCtx.font = 'bold 30px Arial';
+        hudCtx.fillText("Angel Budar Solano - 24200293", 512, 480);
     }
     
     hudTexture.needsUpdate = true;
@@ -297,10 +307,21 @@ const grip = renderer.xr.getControllerGrip(1);
 grip.add(factory.createControllerModel(grip));
 playerGroup.add(controller, grip);
 
+// Botón "Gatillo" para iniciar en Menú/GameOver
 controller.addEventListener('selectstart', () => {
     if(currentState !== STATE.PLAYING) {
         resetGame();
     }
+});
+
+// Botón "Grip" (Agarre Lateral) para REINICIO RÁPIDO en cualquier momento
+controller.addEventListener('squeezestart', () => {
+    resetGame();
+});
+
+// Tecla 'R' para reinicio rápido (Debug PC)
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') resetGame();
 });
 
 // === 8. RESET ===
