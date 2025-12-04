@@ -128,6 +128,12 @@ function updateHUD(title, subtitle, extraInfo) {
         hudCtx.fillStyle = '#aaaaaa';
         hudCtx.fillText("Botón Grip: Reinicio Rápido", 500, 450);
 
+        // --- PIE DE JUEGO (DURANTE LA PARTIDA) ---
+        hudCtx.textAlign = 'center';
+        hudCtx.fillStyle = 'rgba(0, 255, 255, 0.5)'; // Color sutil
+        hudCtx.font = '20px Arial';
+        hudCtx.fillText("Dev: Angel Budar Solano - 24200293", 512, 500);
+
     } else {
         hudCtx.fillStyle = 'rgba(0, 0, 0, 0.95)';
         hudCtx.fillRect(0,0,1024,512);
@@ -162,10 +168,11 @@ function updateHUD(title, subtitle, extraInfo) {
         hudCtx.font = 'bold 40px Arial';
         hudCtx.fillText(currentState === STATE.GAMEOVER ? "GATILLO: REINTENTAR" : "GATILLO: INICIAR", 512, 425);
 
-        hudCtx.textAlign = 'right';
+        // --- PIE DE JUEGO (EN MENÚ) - CENTRADO Y ELEGANTE ---
+        hudCtx.textAlign = 'center';
         hudCtx.fillStyle = '#0088ff';
-        hudCtx.font = 'bold 25px Arial';
-        hudCtx.fillText("Angel Budar Solano - 24200293", 1000, 500);
+        hudCtx.font = 'bold 30px Arial';
+        hudCtx.fillText("Creado por: Angel Budar Solano - 24200293", 512, 490);
     }
     
     hudTexture.needsUpdate = true;
