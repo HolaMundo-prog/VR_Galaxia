@@ -1,242 +1,334 @@
-// main.js - Entrar a VR con botón (diseñado para Meta Quest Browser)
-// Requisitos: servir por HTTPS o servidor local, colocar assets/fondo.mp3
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-// UI
-const startScreen = document.getElementById('startScreen');
-const enterVrBtn = document.getElementById('enterVrBtn');
-const startBtn = document.getElementById('startBtn');
-const hud = document.getElementById('hud');
-const scoreEl = document.getElementById('score');
-const bestEl = document.getElementById('best');
-const endScreen = document.getElementById('endScreen');
-const finalText = document.getElementById('finalText');
-const restartBtn = document.getElementById('restartBtn');
-const endBtn = document.getElementById('endBtn');
+// === CONFIGURACIÓN DEL JUEGO ===
+const CONFIG = {
+    speed: 30,             // Velocidad de avance
+    laneWidth: 8,          // Ancho del túnel
+    winScore: 1000,        // Puntos para ganar
+    spawnRate: 0.8         // Tiempo entre obstáculos
+};
 
-const canvas = document.getElementById('xr-canvas');
-const audio = new Audio('assets/fondo.mp3');
-audio.loop = true;
+// Estados
+const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2, WIN: 3 };
+let currentState = STATE.MENU;
 
-let renderer, scene, camera;
-let gems = [], blocks = [];
-let running = false, gameOver = false;
 let score = 0;
-let best = parseInt(localStorage.getItem('autoquest_best') || '0', 10);
-bestEl.innerText = 'Mejor: ' + best;
+let items = []; // Aquí guardamos obstáculos y monedas
+let tunnelRings = []; // Para el efecto visual del túnel
 
-// Settings
-const GEM_COUNT = 40;
-const BLOCK_COUNT = 28;
-const WORLD_SPEED = 0.12;
+// === 1. ESCENA Y RENDERER ===
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
 
-// Input fallback
-let inputX = 0;
-window.addEventListener('keydown', e => {
-  if (e.key === 'ArrowLeft' || e.key === 'a') inputX = -1;
-  if (e.key === 'ArrowRight' || e.key === 'd') inputX = 1;
-  if (e.key === 'Enter' && !running) startGame();
-});
-window.addEventListener('keyup', e => {
-  if (['ArrowLeft','a','ArrowRight','d'].includes(e.key)) inputX = 0;
-});
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050011);
+scene.fog = new THREE.Fog(0x050011, 20, 100);
 
-// Buttons
-startBtn.addEventListener('click', () => {
-  // gesture unlock for audio
-  audio.play().catch(()=>{});
-  startGame();
-});
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 200);
+const playerGroup = new THREE.Group();
+playerGroup.position.set(0, 0, 0);
+playerGroup.add(camera);
+scene.add(playerGroup);
 
-restartBtn.addEventListener('click', () => location.reload());
-endBtn.addEventListener('click', () => endGame());
-
-// Enter VR: request immersive-vr and set session on renderer.xr
-enterVrBtn.addEventListener('click', async () => {
-  if (!navigator.xr) {
-    alert('WebXR no está disponible en este navegador.');
-    return;
-  }
-  try {
-    const supported = await navigator.xr.isSessionSupported('immersive-vr');
-    if (!supported) return alert('immersive-vr no soportado en este dispositivo.');
-    if (!renderer) initScene(); // create renderer before requesting session
-    const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor','bounded-floor'] });
-    await renderer.xr.setSession(session);
-    // Hide start screen when entering VR (if desired)
-    startScreen.classList.add('hidden');
-  } catch (err) {
-    console.error('Error al entrar a VR:', err);
-    alert('Fallo al entrar a VR: ' + (err && err.message ? err.message : err));
-  }
+// Audio
+const listener = new THREE.AudioListener();
+camera.add(listener);
+const bgMusic = document.getElementById('bg-music');
+renderer.xr.addEventListener('sessionstart', () => {
+    if(bgMusic) { bgMusic.volume=0.3; bgMusic.play().catch(console.warn); }
+    resetGame();
 });
 
-// Initialize scene and rendering (lazy init)
-function initScene() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x06121a);
+// === 2. ENTORNO (TÚNEL GALÁCTICO) ===
+// Suelo
+const grid = new THREE.GridHelper(200, 50, 0xff00cc, 0x220044);
+grid.position.y = -2;
+scene.add(grid);
 
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 1000);
-  camera.position.set(0, 1.6, 2);
+// Luces
+const light = new THREE.DirectionalLight(0xffffff, 1.5);
+light.position.set(0, 10, 5);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.xr.enabled = true;
+// Anillos del túnel (Efecto visual)
+const ringGeo = new THREE.TorusGeometry(15, 0.2, 8, 32);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
 
-  // lights
-  const hemi = new THREE.HemisphereLight(0x88bbff, 0x222233, 0.9);
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
-  dir.position.set(3, 10, 5);
-  scene.add(dir);
-
-  createTunnel();
-  spawnGems();
-  spawnBlocks();
-
-  window.addEventListener('resize', onResize);
-  renderer.setAnimationLoop(loop);
+function spawnRing() {
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.z = -100; // Aparece lejos
+    scene.add(ring);
+    tunnelRings.push(ring);
 }
 
-// Create a long tunnel (backside visible)
-function createTunnel() {
-  const geo = new THREE.CylinderGeometry(8, 8, 600, 32, 8, true);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x08131d, side: THREE.BackSide });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.rotation.z = Math.PI/2;
-  mesh.position.z = -250;
-  scene.add(mesh);
+// === 3. INTERFAZ HUD (PANTALLA) ===
+const hudCanvas = document.createElement('canvas');
+hudCanvas.width = 512; hudCanvas.height = 256;
+const hudCtx = hudCanvas.getContext('2d');
+const hudTexture = new THREE.CanvasTexture(hudCanvas);
 
-  // faint lane markers (visual)
-  const stripeMat = new THREE.MeshBasicMaterial({ color: 0x1b2b34 });
-  for (let i=0; i<200; i++){
-    const s = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 2), stripeMat);
-    s.position.set(0, 0.01, -i*3 - 2);
-    scene.add(s);
-  }
-}
+function updateHUD(message = null, subMessage = null) {
+    hudCtx.clearRect(0,0,512,256);
+    
+    // Fondo semitransparente
+    hudCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    hudCtx.fillRect(0,0,512,256);
+    
+    // Borde
+    let color = '#00ffcc';
+    if(currentState === STATE.GAMEOVER) color = '#ff0000';
+    if(currentState === STATE.WIN) color = '#ffff00';
+    
+    hudCtx.strokeStyle = color;
+    hudCtx.lineWidth = 8;
+    hudCtx.strokeRect(4,4,504,248);
 
-// Gems (collectibles)
-function spawnGems(){
-  const geom = new THREE.OctahedronGeometry(0.18);
-  for (let i=0; i<GEM_COUNT; i++){
-    const mat = new THREE.MeshStandardMaterial({ color: 0x00f5d4, metalness:0.3, roughness:0.2 });
-    const m = new THREE.Mesh(geom, mat);
-    m.position.set((Math.random()-0.5)*6, 1 + Math.random()*0.6, -5 - Math.random()*220);
-    scene.add(m);
-    gems.push(m);
-  }
-}
-
-// Obstáculos (cubos)
-function spawnBlocks(){
-  const geom = new THREE.BoxGeometry(1.2, 1.2, 1.2);
-  for (let i=0; i<BLOCK_COUNT; i++){
-    const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5) });
-    const m = new THREE.Mesh(geom, mat);
-    m.position.set((Math.random()-0.5)*6, 1.0, -10 - Math.random()*220);
-    scene.add(m);
-    blocks.push(m);
-  }
-}
-
-// Start the game (scene will be initialized if not already)
-function startGame(){
-  if (!renderer) initScene();
-  startScreen.classList.add('hidden');
-  hud.classList.remove('hidden');
-  gameOver = false;
-  running = true;
-  score = 0;
-  scoreEl.innerText = score;
-  audio.play().catch(()=>{});
-}
-
-// Handle XR + keyboard joystick input
-function getLateralInput(){
-  let lateral = inputX * 0.02; // keyboard fallback
-  if (renderer && renderer.xr && renderer.xr.isPresenting){
-    const session = renderer.xr.getSession();
-    if (session){
-      for (const src of session.inputSources){
-        if (!src.gamepad) continue;
-        // prefer right-handed controller axes if available
-        const gp = src.gamepad;
-        // Some controllers map axis 2 to horizontal thumbstick; fallback to axis 0
-        const raw = (gp.axes.length >= 3) ? (gp.axes[2] ?? gp.axes[0]) : (gp.axes[0] ?? 0);
-        lateral = raw * 0.03;
-        // if right handed prefer it
-        if (src.handedness === 'right') break;
-      }
+    hudCtx.textAlign = 'center';
+    
+    if (currentState === STATE.PLAYING) {
+        hudCtx.fillStyle = '#00ffcc';
+        hudCtx.font = 'bold 60px Arial';
+        hudCtx.fillText(`PUNTOS: ${score} / ${CONFIG.winScore}`, 256, 100);
+        hudCtx.font = '40px Arial';
+        hudCtx.fillStyle = '#ffffff';
+        hudCtx.fillText("Esquiva ROJO - Toma AZUL", 256, 180);
+    } else {
+        // Mensajes de Menú / Fin
+        hudCtx.fillStyle = color;
+        hudCtx.font = 'bold 70px Arial';
+        hudCtx.fillText(message || "GALACTIC RACER", 256, 100);
+        
+        hudCtx.fillStyle = '#ffffff';
+        hudCtx.font = '40px Arial';
+        hudCtx.fillText(subMessage || "Presiona Gatillo para Jugar", 256, 180);
     }
-  }
-  return lateral;
+    hudTexture.needsUpdate = true;
+}
+updateHUD("GALACTIC RACER", "Presiona Gatillo para Iniciar");
+
+// Pantalla flotante en la cabina
+const hudScreen = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.6, 0.8),
+    new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true })
+);
+hudScreen.position.set(0, 1.2, -2.5);
+hudScreen.rotation.x = -0.2;
+playerGroup.add(hudScreen);
+
+// === 4. LA NAVE (CABINA) ===
+function createCar() {
+    const car = new THREE.Group();
+    // Tablero
+    const dash = new THREE.Mesh(
+        new THREE.BoxGeometry(2, 0.5, 1),
+        new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 })
+    );
+    dash.position.set(0, 0.5, -1);
+    car.add(dash);
+    
+    // Parabrisas (Marco)
+    const frameGeo = new THREE.BoxGeometry(0.1, 1, 0.1);
+    const frameMat = new THREE.MeshStandardMaterial({color: 0x333333});
+    const left = new THREE.Mesh(frameGeo, frameMat); left.position.set(-1, 1, -1);
+    const right = new THREE.Mesh(frameGeo, frameMat); right.position.set(1, 1, -1);
+    car.add(left, right);
+    
+    return car;
+}
+playerGroup.add(createCar());
+
+// === 5. OBSTÁCULOS Y PREMIOS ===
+const obstacleGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+const obstacleMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x440000 }); // Rojo
+
+const coinGeo = new THREE.OctahedronGeometry(0.8, 0);
+const coinMat = new THREE.MeshStandardMaterial({ color: 0x0088ff, emissive: 0x0044ff }); // Azul
+
+function spawnItem() {
+    if(currentState !== STATE.PLAYING) return;
+    
+    const isCoin = Math.random() > 0.6; // 40% monedas, 60% obstaculos
+    const mesh = new THREE.Mesh(
+        isCoin ? coinGeo : obstacleGeo,
+        isCoin ? coinMat : obstacleMat
+    );
+    
+    // Posición aleatoria en X (Carriles virtuales)
+    // Rango de -6 a 6
+    const xPos = (Math.random() - 0.5) * CONFIG.laneWidth * 1.5;
+    
+    mesh.position.set(xPos, 0.5, -100); // Aparece al fondo
+    mesh.userData = { type: isCoin ? 'coin' : 'obstacle', active: true };
+    
+    scene.add(mesh);
+    items.push(mesh);
 }
 
-// Main loop
-function loop(){
-  if (!scene || !camera) return;
-  if (running && !gameOver){
-    // movement lateral
-    const lateral = getLateralInput();
-    camera.position.x = THREE.MathUtils.clamp(camera.position.x + lateral, -4, 4);
-
-    // move environment towards the player by moving objects' z forward slightly
-    const move = WORLD_SPEED;
-    gems.forEach((g, i) => {
-      g.rotation.y += 0.04;
-      g.position.z += move;
-      // collect
-      const camPos = new THREE.Vector3(); camera.getWorldPosition(camPos);
-      if (g.position.distanceTo(camPos) < 0.95){
-        scene.remove(g);
-        gems.splice(i, 1);
-        score++;
-        scoreEl.innerText = score;
-      }
-      // recycle far ahead gems
-      if (g.position.z > camPos.z + 6){
-        g.position.z = -40 - Math.random()*220;
-        g.position.x = (Math.random()-0.5)*6;
-      }
-    });
-
-    // obstacles
-    const camPos = new THREE.Vector3(); camera.getWorldPosition(camPos);
-    for (let i=blocks.length-1;i>=0;i--){
-      const b = blocks[i];
-      b.position.z += move;
-      if (b.position.distanceTo(camPos) < 1.05){
-        // hit
-        endGame();
-        break;
-      }
-      if (b.position.z > camPos.z + 6){
-        b.position.z = -40 - Math.random()*220;
-        b.position.x = (Math.random()-0.5)*6;
-      }
+// === 6. SONIDOS SINTÉTICOS ===
+function playSound(type) {
+    if(listener.context.state === 'suspended') listener.context.resume();
+    const osc = listener.context.createOscillator();
+    const gain = listener.context.createGain();
+    
+    if (type === 'coin') {
+        osc.frequency.setValueAtTime(800, listener.context.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, listener.context.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.1, listener.context.currentTime);
+    } else if (type === 'crash') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, listener.context.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(10, listener.context.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.3, listener.context.currentTime);
+    } else if (type === 'win') {
+        osc.frequency.setValueAtTime(400, listener.context.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(800, listener.context.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.2, listener.context.currentTime);
     }
-  }
-
-  renderer.render(scene, camera);
+    
+    gain.gain.exponentialRampToValueAtTime(0.01, listener.context.currentTime + (type==='crash'?0.5:0.2));
+    osc.connect(gain); gain.connect(listener.destination);
+    osc.start(); osc.stop(listener.context.currentTime + (type==='crash'?0.5:0.2));
 }
 
-// End game
-function endGame(){
-  if (gameOver) return;
-  gameOver = true;
-  running = false;
-  hud.classList.add('hidden');
-  finalText.innerText = `Gemas: ${score}`;
-  endScreen.classList.remove('hidden');
-  audio.pause();
-  if (score > best){ best = score; localStorage.setItem('autoquest_best', best); bestEl.innerText = 'Mejor: ' + best; }
+// === 7. CONTROLES VR ===
+const controller = renderer.xr.getController(1); // Mano derecha
+const factory = new XRControllerModelFactory();
+const grip = renderer.xr.getControllerGrip(1);
+grip.add(factory.createControllerModel(grip));
+playerGroup.add(controller, grip);
+
+// Botón para reiniciar/iniciar
+controller.addEventListener('selectstart', () => {
+    if(currentState !== STATE.PLAYING) {
+        resetGame();
+    }
+});
+
+// === 8. LÓGICA DE JUEGO ===
+function resetGame() {
+    // Limpiar todo
+    items.forEach(i => scene.remove(i));
+    items = [];
+    tunnelRings.forEach(r => scene.remove(r));
+    tunnelRings = [];
+    
+    score = 0;
+    currentState = STATE.PLAYING;
+    playerGroup.position.x = 0;
+    updateHUD();
 }
 
-// Resize
-function onResize(){
-  if (!renderer || !camera) return;
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
+// === BUCLE PRINCIPAL ===
+const clock = new THREE.Clock();
+let spawnTimer = 0;
+let ringTimer = 0;
+
+renderer.setAnimationLoop(() => {
+    const dt = clock.getDelta();
+
+    if (currentState === STATE.PLAYING) {
+        // 1. Controles (Inclinación mano derecha)
+        if (renderer.xr.isPresenting) {
+            const rot = controller.rotation.z; // Inclinación lateral
+            playerGroup.position.x -= rot * 20 * dt; // Velocidad de giro
+            
+            // Límites de carretera
+            const limit = CONFIG.laneWidth;
+            if(playerGroup.position.x > limit) playerGroup.position.x = limit;
+            if(playerGroup.position.x < -limit) playerGroup.position.x = -limit;
+            
+            // Inclinación visual del "carro"
+            playerGroup.rotation.z = -rot * 0.5;
+        }
+
+        // 2. Generar cosas
+        spawnTimer += dt;
+        if(spawnTimer > (1.0 / CONFIG.spawnRate)) {
+            spawnItem();
+            spawnTimer = 0;
+            // Aumentar dificultad ligeramente
+            if(CONFIG.spawnRate < 2.5) CONFIG.spawnRate += 0.01;
+        }
+        
+        // 3. Generar anillos de túnel
+        ringTimer += dt;
+        if(ringTimer > 0.5) {
+            spawnRing();
+            ringTimer = 0;
+        }
+
+        // 4. Mover Items y Colisiones
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            item.position.z += CONFIG.speed * dt;
+            
+            // Rotación visual
+            item.rotation.x += dt;
+            item.rotation.y += dt;
+
+            // Distancia al jugador
+            const distZ = Math.abs(item.position.z - playerGroup.position.z);
+            const distX = Math.abs(item.position.x - playerGroup.position.x);
+
+            // Colisión
+            if (item.userData.active && distZ < 1.5 && distX < 1.2) {
+                item.userData.active = false;
+                scene.remove(item);
+                items.splice(i, 1);
+                
+                if (item.userData.type === 'coin') {
+                    // Puntos
+                    score += 100;
+                    playSound('coin');
+                    updateHUD();
+                    
+                    if (score >= CONFIG.winScore) {
+                        currentState = STATE.WIN;
+                        playSound('win');
+                        updateHUD("¡VICTORIA!", `Lograste ${score} puntos. Gatillo para reiniciar.`);
+                    }
+                } else {
+                    // Choque
+                    currentState = STATE.GAMEOVER;
+                    playSound('crash');
+                    updateHUD("GAME OVER", "Chocaste. Gatillo para reiniciar.");
+                }
+                continue;
+            }
+
+            // Limpieza si pasa de largo
+            if (item.position.z > 5) {
+                scene.remove(item);
+                items.splice(i, 1);
+            }
+        }
+        
+        // 5. Mover Anillos
+        for(let i=tunnelRings.length-1; i>=0; i--) {
+            const r = tunnelRings[i];
+            r.position.z += CONFIG.speed * dt;
+            if(r.position.z > 5) {
+                scene.remove(r);
+                tunnelRings.splice(i, 1);
+            }
+        }
+    } else {
+        // En menú o game over, rotar la escena suavemente
+        // playerGroup.rotation.y += dt * 0.1;
+    }
+
+    renderer.render(scene, camera);
+});
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
